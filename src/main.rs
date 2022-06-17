@@ -8,8 +8,8 @@ use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
 use stm32_eth::{
     hal::gpio::GpioExt,
-    hal::rcc::RccExt,
     hal::prelude::*,
+    hal::rcc::RccExt,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
@@ -21,10 +21,10 @@ use core::fmt::Write;
 use fugit::RateExtU32;
 
 use smoltcp::iface::{Interface, InterfaceBuilder, NeighborCache, Routes};
-use smoltcp::socket::{TcpSocket, TcpSocketBuffer, Dhcpv4Event, Dhcpv4Socket};
-use smoltcp::time::Instant;
-use smoltcp::wire::{EthernetAddress, IpCidr, Ipv4Cidr, Ipv4Address};
 use smoltcp::phy::Device;
+use smoltcp::socket::{Dhcpv4Event, Dhcpv4Socket, TcpSocket, TcpSocketBuffer};
+use smoltcp::time::Instant;
+use smoltcp::wire::{EthernetAddress, IpCidr, Ipv4Address, Ipv4Cidr};
 
 use stm32_eth::{EthPins, RingEntry};
 
