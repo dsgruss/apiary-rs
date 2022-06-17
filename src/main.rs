@@ -48,7 +48,7 @@ fn main() -> ! {
     let tx_pin = gpiod.pd8.into_alternate();
 
     let mut tx = p.USART3.tx(tx_pin, 9600.bps(), &clocks).unwrap();
-    writeln!(tx, "Serial debug active").unwrap();
+    writeln!(tx, "\n\nSerial debug active").unwrap();
 
     writeln!(tx, "Enabling ethernet...").unwrap();
     let gpioa = p.GPIOA.split();
@@ -98,46 +98,7 @@ fn main() -> ! {
 
     let dhcp_socket = Dhcpv4Socket::new();
     let dhcp_handle = iface.add_socket(dhcp_socket);
-
-    loop {
-        let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
-        if let Err(e) = iface.poll(Instant::from_millis(time as i64)) {
-            writeln!(tx, "Error: {:?}", e).unwrap();
-        }
-
-        let event = iface.get_socket::<Dhcpv4Socket>(dhcp_handle).poll();
-        match event {
-            None => {}
-            Some(Dhcpv4Event::Configured(config)) => {
-                writeln!(tx, "DHCP config acquired!").unwrap();
-
-                writeln!(tx, "IP address:      {}", config.address).unwrap();
-                set_ipv4_addr(&mut iface, config.address);
-
-                if let Some(router) = config.router {
-                    writeln!(tx, "Default gateway: {}", router).unwrap();
-                    iface.routes_mut().add_default_ipv4_route(router).unwrap();
-                } else {
-                    writeln!(tx, "Default gateway: None").unwrap();
-                    iface.routes_mut().remove_default_ipv4_route();
-                }
-
-                for (i, s) in config.dns_servers.iter().enumerate() {
-                    if let Some(s) = s {
-                        writeln!(tx, "DNS server {}:    {}", i, s).unwrap();
-                    }
-                }
-                break;
-            }
-            Some(Dhcpv4Event::Deconfigured) => {
-                writeln!(tx, "DHCP lost config!").unwrap();
-                set_ipv4_addr(&mut iface, Ipv4Cidr::new(Ipv4Address::UNSPECIFIED, 0));
-                iface.routes_mut().remove_default_ipv4_route();
-            }
-        }
-
-        asm::wfi();
-    }
+    let mut dhcp_configured = false;
 
     let mut server_rx_buffer = [0; 2048];
     let mut server_tx_buffer = [0; 2048];
@@ -147,7 +108,7 @@ fn main() -> ! {
     );
     let server_handle = iface.add_socket(server_socket);
 
-    writeln!(tx, "Socket created and ready!").unwrap();
+    writeln!(tx, "Sockets created and starting main loop").unwrap();
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         cortex_m::interrupt::free(|cs| {
@@ -156,6 +117,41 @@ fn main() -> ! {
         });
         match iface.poll(Instant::from_millis(time as i64)) {
             Ok(true) => {
+                let event = iface.get_socket::<Dhcpv4Socket>(dhcp_handle).poll();
+                match event {
+                    None => {}
+                    Some(Dhcpv4Event::Configured(config)) => {
+                        writeln!(tx, "DHCP config acquired!").unwrap();
+
+                        writeln!(tx, "IP address:      {}", config.address).unwrap();
+                        set_ipv4_addr(&mut iface, config.address);
+
+                        if let Some(router) = config.router {
+                            writeln!(tx, "Default gateway: {}", router).unwrap();
+                            iface.routes_mut().add_default_ipv4_route(router).unwrap();
+                        } else {
+                            writeln!(tx, "Default gateway: None").unwrap();
+                            iface.routes_mut().remove_default_ipv4_route();
+                        }
+
+                        for (i, s) in config.dns_servers.iter().enumerate() {
+                            if let Some(s) = s {
+                                writeln!(tx, "DNS server {}:    {}", i, s).unwrap();
+                            }
+                        }
+                        dhcp_configured = true;
+                    }
+                    Some(Dhcpv4Event::Deconfigured) => {
+                        writeln!(tx, "DHCP lost config!").unwrap();
+                        set_ipv4_addr(&mut iface, Ipv4Cidr::new(Ipv4Address::UNSPECIFIED, 0));
+                        iface.routes_mut().remove_default_ipv4_route();
+                        dhcp_configured = false;
+                    }
+                }
+                if !dhcp_configured {
+                    continue;
+                }
+
                 let socket = iface.get_socket::<TcpSocket>(server_handle);
                 if !socket.is_open() {
                     socket
