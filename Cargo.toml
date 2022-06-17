@@ -6,13 +6,14 @@ name = "apiary-rs"
 version = "0.1.0"
 
 [dependencies]
-cortex-m = "0.6.0"
-cortex-m-rt = "0.6.10"
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
 cortex-m-semihosting = "0.3.3"
 panic-halt = "0.2.0"
-
-# Uncomment for the panic example.
-# panic-itm = "0.4.1"
+panic-semihosting = "0.6.0"
+panic-itm = "0.4"
+fugit = "0.3"
+log = "0.4"
 
 # Uncomment for the allocator example.
 # alloc-cortex-m = "0.4.0"
@@ -23,6 +24,19 @@ panic-halt = "0.2.0"
 # [dependencies.stm32f3]
 # features = ["stm32f303", "rt"]
 # version = "0.7.1"
+
+[dependencies.smoltcp]
+version = "0.8"
+default-features = false
+features = [
+    "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-icmp",
+    "log", "verbose", "socket-dhcpv4"
+]
+
+[dependencies.stm32-eth]
+git = "https://github.com/stm32-rs/stm32-eth"
+features = ["stm32f429", "smoltcp-phy", "log"]
+rev = "ae3a846"
 
 # this lets you use `cargo fix`!
 [[bin]]
