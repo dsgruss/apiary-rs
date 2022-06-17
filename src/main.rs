@@ -9,6 +9,7 @@ use cortex_m_rt::{entry, exception};
 use stm32_eth::{
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
+    hal::prelude::*,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
@@ -16,10 +17,9 @@ use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
 
 use core::fmt::Write;
-use cortex_m_semihosting::hio;
 
 use fugit::RateExtU32;
-use log::{Level, LevelFilter, Metadata, Record};
+
 use smoltcp::iface::{Interface, InterfaceBuilder, NeighborCache, Routes};
 use smoltcp::socket::{TcpSocket, TcpSocketBuffer, Dhcpv4Event, Dhcpv4Socket};
 use smoltcp::time::Instant;
@@ -28,24 +28,6 @@ use smoltcp::phy::Device;
 
 use stm32_eth::{EthPins, RingEntry};
 
-static mut LOGGER: HioLogger = HioLogger {};
-
-struct HioLogger {}
-
-impl log::Log for HioLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Trace
-    }
-
-    fn log(&self, record: &Record) {
-        if self.enabled(record.metadata()) {
-            let mut stdout = hio::hstdout().unwrap();
-            writeln!(stdout, "{} - {}", record.level(), record.args()).unwrap();
-        }
-    }
-    fn flush(&self) {}
-}
-
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
 static TIME: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
@@ -53,13 +35,6 @@ static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
 #[entry]
 fn main() -> ! {
-    unsafe {
-        log::set_logger(&LOGGER).unwrap();
-    }
-    log::set_max_level(LevelFilter::Info);
-
-    let mut stdout = hio::hstdout().unwrap();
-
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
@@ -69,7 +44,13 @@ fn main() -> ! {
 
     setup_systick(&mut cp.SYST);
 
-    writeln!(stdout, "Enabling ethernet...").unwrap();
+    let gpiod = p.GPIOD.split();
+    let tx_pin = gpiod.pd8.into_alternate();
+
+    let mut tx = p.USART3.tx(tx_pin, 9600.bps(), &clocks).unwrap();
+    writeln!(tx, "Serial debug active").unwrap();
+
+    writeln!(tx, "Enabling ethernet...").unwrap();
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
     let gpioc = p.GPIOC.split();
@@ -121,35 +102,35 @@ fn main() -> ! {
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         if let Err(e) = iface.poll(Instant::from_millis(time as i64)) {
-            writeln!(stdout, "Error: {:?}", e).unwrap();
+            writeln!(tx, "Error: {:?}", e).unwrap();
         }
 
         let event = iface.get_socket::<Dhcpv4Socket>(dhcp_handle).poll();
         match event {
             None => {}
             Some(Dhcpv4Event::Configured(config)) => {
-                writeln!(stdout, "DHCP config acquired!").unwrap();
+                writeln!(tx, "DHCP config acquired!").unwrap();
 
-                writeln!(stdout, "IP address:      {}", config.address).unwrap();
+                writeln!(tx, "IP address:      {}", config.address).unwrap();
                 set_ipv4_addr(&mut iface, config.address);
 
                 if let Some(router) = config.router {
-                    writeln!(stdout, "Default gateway: {}", router).unwrap();
+                    writeln!(tx, "Default gateway: {}", router).unwrap();
                     iface.routes_mut().add_default_ipv4_route(router).unwrap();
                 } else {
-                    writeln!(stdout, "Default gateway: None").unwrap();
+                    writeln!(tx, "Default gateway: None").unwrap();
                     iface.routes_mut().remove_default_ipv4_route();
                 }
 
                 for (i, s) in config.dns_servers.iter().enumerate() {
                     if let Some(s) = s {
-                        writeln!(stdout, "DNS server {}:    {}", i, s).unwrap();
+                        writeln!(tx, "DNS server {}:    {}", i, s).unwrap();
                     }
                 }
                 break;
             }
             Some(Dhcpv4Event::Deconfigured) => {
-                writeln!(stdout, "DHCP lost config!").unwrap();
+                writeln!(tx, "DHCP lost config!").unwrap();
                 set_ipv4_addr(&mut iface, Ipv4Cidr::new(Ipv4Address::UNSPECIFIED, 0));
                 iface.routes_mut().remove_default_ipv4_route();
             }
@@ -166,7 +147,7 @@ fn main() -> ! {
     );
     let server_handle = iface.add_socket(server_socket);
 
-    writeln!(stdout, "Socket created and ready!").unwrap();
+    writeln!(tx, "Socket created and ready!").unwrap();
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         cortex_m::interrupt::free(|cs| {
@@ -179,7 +160,7 @@ fn main() -> ! {
                 if !socket.is_open() {
                     socket
                         .listen(80)
-                        .or_else(|e| writeln!(stdout, "TCP listen error: {:?}", e))
+                        .or_else(|e| writeln!(tx, "TCP listen error: {:?}", e))
                         .unwrap();
                 }
 
@@ -188,7 +169,7 @@ fn main() -> ! {
                         .map(|_| {
                             socket.close();
                         })
-                        .or_else(|e| writeln!(stdout, "TCP send error: {:?}", e))
+                        .or_else(|e| writeln!(tx, "TCP send error: {:?}", e))
                         .unwrap();
                 }
             }
@@ -205,7 +186,7 @@ fn main() -> ! {
             Err(e) =>
             // Ignore malformed packets
             {
-                writeln!(stdout, "Error: {:?}", e).unwrap()
+                writeln!(tx, "Error: {:?}", e).unwrap()
             }
         }
     }
