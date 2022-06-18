@@ -9,9 +9,9 @@ version = "0.1.0"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 cortex-m-semihosting = "0.3.3"
-panic-halt = "0.2.0"
+# panic-halt = "0.2.0"
 panic-semihosting = "0.6.0"
-panic-itm = "0.4"
+# panic-itm = "0.4"
 fugit = "0.3"
 
 # Uncomment for the allocator example.
