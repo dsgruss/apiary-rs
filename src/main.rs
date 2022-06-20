@@ -44,6 +44,14 @@ struct SerialLogger {
     tx: Mutex<RefCell<Option<SerialTx>>>,
 }
 
+impl SerialLogger {
+    const fn new() -> SerialLogger {
+        SerialLogger {
+            tx: Mutex::new(RefCell::new(None)),
+        }
+    }
+}
+
 impl log::Log for SerialLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= Level::Info
@@ -62,9 +70,7 @@ impl log::Log for SerialLogger {
     fn flush(&self) {}
 }
 
-static LOGGER: SerialLogger = SerialLogger {
-    tx: Mutex::new(RefCell::new(None)),
-};
+static LOGGER: SerialLogger = SerialLogger::new();
 
 #[entry]
 fn main() -> ! {
