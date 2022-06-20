@@ -86,12 +86,13 @@ fn main() -> ! {
     let gpiod = p.GPIOD.split();
     let tx_pin = gpiod.pd8.into_alternate();
 
-    let tx = p.USART3.tx(tx_pin, 9600.bps(), &clocks).unwrap();
+    let mut tx = p.USART3.tx(tx_pin, 115_200_u32.bps(), &clocks).unwrap();
+    writeln!(tx, "\n\n").unwrap();
     cortex_m::interrupt::free(|cs| *LOGGER.tx.borrow(cs).borrow_mut() = Some(tx));
     log::set_logger(&LOGGER)
         .map(|()| log::set_max_level(LevelFilter::Info))
         .unwrap();
-    info!("\n\nSerial debug active");
+    info!("Serial debug active");
 
     info!("Enabling ethernet...");
     let gpioa = p.GPIOA.split();
