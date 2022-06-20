@@ -72,7 +72,7 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger::new();
 
-use apiary::Switch;
+use apiary::{Led, Switch};
 
 #[entry]
 fn main() -> ! {
@@ -85,7 +85,12 @@ fn main() -> ! {
 
     setup_systick(&mut cp.SYST);
 
+    let gpioa = p.GPIOA.split();
+    let gpiob = p.GPIOB.split();
+    let gpioc = p.GPIOC.split();
     let gpiod = p.GPIOD.split();
+    let gpiog = p.GPIOG.split();
+
     let tx_pin = gpiod.pd8.into_alternate();
 
     let mut tx = p.USART3.tx(tx_pin, 115_200_u32.bps(), &clocks).unwrap();
@@ -96,12 +101,10 @@ fn main() -> ! {
         .unwrap();
     info!("Serial debug active");
 
-    let gpioa = p.GPIOA.split();
-    let gpiob = p.GPIOB.split();
-    let gpioc = p.GPIOC.split();
-    let gpiog = p.GPIOG.split();
-
-    let mut s = Switch::new(gpioa.pa15.into_input());
+    let mut sw2 = Switch::new(gpiod.pd12);
+    let mut l2 = Led::new(gpiod.pd13);
+    let mut sw4 = Switch::new(gpioc.pc8);
+    let mut l4 = Led::new(gpioc.pc9);
 
     info!("Enabling ethernet...");
     let eth_pins = EthPins {
@@ -165,12 +168,21 @@ fn main() -> ! {
             let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
             *eth_pending = false;
         });
-        s.debounce();
-        if s.just_pressed() {
-            info!("Switch pressed");
+        sw2.debounce();
+        sw4.debounce();
+        if sw2.just_pressed() {
+            info!("SW2 switch pressed");
+            l2.toggle();
         }
-        if s.released() {
-            info!("Switch released");
+        if sw2.released() {
+            info!("SW2 switch released");
+        }
+        if sw4.just_pressed() {
+            info!("SW4 switch pressed");
+            l4.toggle();
+        }
+        if sw4.released() {
+            info!("SW4 switch released");
         }
         match iface.poll(Instant::from_millis(time as i64)) {
             Ok(true) => {

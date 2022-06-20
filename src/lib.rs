@@ -1,6 +1,7 @@
 #![no_std]
 
 use stm32_eth::hal::gpio;
+use stm32_eth::hal::gpio::Output;
 
 pub struct Switch<const P: char, const N: u8> {
     pin: gpio::Pin<P, N>,
@@ -29,5 +30,28 @@ impl<const P: char, const N: u8> Switch<P, N> {
 
     pub fn pressed(&self) -> bool {
         self.switch_state == 0x00
+    }
+}
+
+pub struct Led<const P: char, const N: u8> {
+    pin: gpio::Pin<P, N, Output>,
+    led_state: bool,
+}
+
+impl<const P: char, const N: u8> Led<P, N> {
+    pub fn new(pin: gpio::Pin<P, N>) -> Led<P, N> {
+        Led {
+            pin: pin.into_push_pull_output(),
+            led_state: false,
+        }
+    }
+
+    pub fn toggle(&mut self) {
+        if self.led_state {
+            self.pin.set_high();
+        } else {
+            self.pin.set_low();
+        }
+        self.led_state = !self.led_state;
     }
 }
