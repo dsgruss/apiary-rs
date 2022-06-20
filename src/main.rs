@@ -221,9 +221,8 @@ fn main() -> ! {
                     }
                 });
             }
-            Err(e) =>
-            // Ignore malformed packets
-            {
+            Err(e) => {
+                // Ignore malformed packets
                 info!("Error: {:?}", e);
             }
         }
