@@ -72,7 +72,7 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger::new();
 
-use apiary::{Led, Switch};
+use apiary::{Ui, UiPins};
 
 #[entry]
 fn main() -> ! {
@@ -101,10 +101,13 @@ fn main() -> ! {
         .unwrap();
     info!("Serial debug active");
 
-    let mut sw2 = Switch::new(gpiod.pd12);
-    let mut l2 = Led::new(gpiod.pd13);
-    let mut sw4 = Switch::new(gpioc.pc8);
-    let mut l4 = Led::new(gpioc.pc9);
+    let ui_pins = UiPins {
+        sw_sig2: gpiod.pd12,
+        sw_sig4: gpioc.pc8,
+        sw_light2: gpiod.pd13,
+        sw_light4: gpioc.pc9,
+    };
+    let mut ui = Ui::new(ui_pins);
 
     info!("Enabling ethernet...");
     let eth_pins = EthPins {
@@ -168,22 +171,9 @@ fn main() -> ! {
             let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
             *eth_pending = false;
         });
-        sw2.debounce();
-        sw4.debounce();
-        if sw2.just_pressed() {
-            info!("SW2 switch pressed");
-            l2.toggle();
-        }
-        if sw2.released() {
-            info!("SW2 switch released");
-        }
-        if sw4.just_pressed() {
-            info!("SW4 switch pressed");
-            l4.toggle();
-        }
-        if sw4.released() {
-            info!("SW4 switch released");
-        }
+
+        ui.poll();
+
         match iface.poll(Instant::from_millis(time as i64)) {
             Ok(true) => {
                 let event = iface.get_socket::<Dhcpv4Socket>(dhcp_handle).poll();
