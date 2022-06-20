@@ -72,6 +72,8 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger::new();
 
+use apiary::Switch;
+
 #[entry]
 fn main() -> ! {
     let p = Peripherals::take().unwrap();
@@ -94,12 +96,14 @@ fn main() -> ! {
         .unwrap();
     info!("Serial debug active");
 
-    info!("Enabling ethernet...");
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
     let gpioc = p.GPIOC.split();
     let gpiog = p.GPIOG.split();
 
+    let mut s = Switch::new(gpioa.pa15.into_input());
+
+    info!("Enabling ethernet...");
     let eth_pins = EthPins {
         ref_clk: gpioa.pa1,
         crs: gpioa.pa7,
@@ -154,12 +158,20 @@ fn main() -> ! {
     let server_handle = iface.add_socket(server_socket);
 
     info!("Sockets created and starting main loop");
+
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         cortex_m::interrupt::free(|cs| {
             let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
             *eth_pending = false;
         });
+        s.debounce();
+        if s.just_pressed() {
+            info!("Switch pressed");
+        }
+        if s.released() {
+            info!("Switch released");
+        }
         match iface.poll(Instant::from_millis(time as i64)) {
             Ok(true) => {
                 let event = iface.get_socket::<Dhcpv4Socket>(dhcp_handle).poll();

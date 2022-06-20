@@ -2,7 +2,7 @@
 authors = ["Daniel Gruss <dsgruss@users.noreply.github.com>"]
 edition = "2018"
 readme = "README.md"
-name = "apiary-rs"
+name = "apiary"
 version = "0.1.0"
 
 [dependencies]
@@ -40,7 +40,7 @@ rev = "ae3a846"
 
 # this lets you use `cargo fix`!
 [[bin]]
-name = "apiary-rs"
+name = "apiary"
 test = false
 bench = false
 
