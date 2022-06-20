@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-// extern crate panic_itm;
 use panic_semihosting as _;
+// use panic_itm as _;
 
 use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
@@ -10,7 +10,8 @@ use stm32_eth::{
     hal::gpio::GpioExt,
     hal::prelude::*,
     hal::rcc::RccExt,
-    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
+    hal::serial::Tx,
+    stm32::{interrupt, CorePeripherals, Peripherals, SYST, USART3},
 };
 
 use core::cell::RefCell;
@@ -33,6 +34,38 @@ const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 static TIME: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
+#[macro_use]
+extern crate log;
+use log::{Level, LevelFilter, Metadata, Record};
+
+type SerialTx = Tx<USART3, u8>;
+
+struct SerialLogger {
+    tx: Mutex<RefCell<Option<SerialTx>>>,
+}
+
+impl log::Log for SerialLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= Level::Info
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            cortex_m::interrupt::free(|cs| {
+                if let Some(tx) = self.tx.borrow(cs).borrow_mut().as_mut() {
+                    writeln!(*tx, "{} - {}", record.level(), record.args()).unwrap();
+                }
+            });
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+static LOGGER: SerialLogger = SerialLogger {
+    tx: Mutex::new(RefCell::new(None)),
+};
+
 #[entry]
 fn main() -> ! {
     let p = Peripherals::take().unwrap();
@@ -47,10 +80,14 @@ fn main() -> ! {
     let gpiod = p.GPIOD.split();
     let tx_pin = gpiod.pd8.into_alternate();
 
-    let mut tx = p.USART3.tx(tx_pin, 9600.bps(), &clocks).unwrap();
-    writeln!(tx, "\n\nSerial debug active").unwrap();
+    let tx = p.USART3.tx(tx_pin, 9600.bps(), &clocks).unwrap();
+    cortex_m::interrupt::free(|cs| *LOGGER.tx.borrow(cs).borrow_mut() = Some(tx));
+    log::set_logger(&LOGGER)
+        .map(|()| log::set_max_level(LevelFilter::Info))
+        .unwrap();
+    info!("\n\nSerial debug active");
 
-    writeln!(tx, "Enabling ethernet...").unwrap();
+    info!("Enabling ethernet...");
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
     let gpioc = p.GPIOC.split();
@@ -78,6 +115,7 @@ fn main() -> ! {
         eth_pins,
     )
     .unwrap();
+
     eth_dma.enable_interrupt();
 
     let ip_addr = IpCidr::new(Ipv4Address::UNSPECIFIED.into(), 0);
@@ -108,7 +146,7 @@ fn main() -> ! {
     );
     let server_handle = iface.add_socket(server_socket);
 
-    writeln!(tx, "Sockets created and starting main loop").unwrap();
+    info!("Sockets created and starting main loop");
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         cortex_m::interrupt::free(|cs| {
@@ -121,28 +159,28 @@ fn main() -> ! {
                 match event {
                     None => {}
                     Some(Dhcpv4Event::Configured(config)) => {
-                        writeln!(tx, "DHCP config acquired!").unwrap();
+                        info!("DHCP config acquired!");
 
-                        writeln!(tx, "IP address:      {}", config.address).unwrap();
+                        info!("IP address:      {}", config.address);
                         set_ipv4_addr(&mut iface, config.address);
 
                         if let Some(router) = config.router {
-                            writeln!(tx, "Default gateway: {}", router).unwrap();
+                            info!("Default gateway: {}", router);
                             iface.routes_mut().add_default_ipv4_route(router).unwrap();
                         } else {
-                            writeln!(tx, "Default gateway: None").unwrap();
+                            info!("Default gateway: None");
                             iface.routes_mut().remove_default_ipv4_route();
                         }
 
                         for (i, s) in config.dns_servers.iter().enumerate() {
                             if let Some(s) = s {
-                                writeln!(tx, "DNS server {}:    {}", i, s).unwrap();
+                                info!("DNS server {}:    {}", i, s);
                             }
                         }
                         dhcp_configured = true;
                     }
                     Some(Dhcpv4Event::Deconfigured) => {
-                        writeln!(tx, "DHCP lost config!").unwrap();
+                        info!("DHCP lost config!");
                         set_ipv4_addr(&mut iface, Ipv4Cidr::new(Ipv4Address::UNSPECIFIED, 0));
                         iface.routes_mut().remove_default_ipv4_route();
                         dhcp_configured = false;
@@ -154,19 +192,17 @@ fn main() -> ! {
 
                 let socket = iface.get_socket::<TcpSocket>(server_handle);
                 if !socket.is_open() {
-                    socket
-                        .listen(80)
-                        .or_else(|e| writeln!(tx, "TCP listen error: {:?}", e))
-                        .unwrap();
+                    if let Err(e) = socket.listen(80) {
+                        info!("TCP listen error: {:?}", e);
+                    }
                 }
 
                 if socket.can_send() {
-                    write!(socket, "hello\n")
-                        .map(|_| {
-                            socket.close();
-                        })
-                        .or_else(|e| writeln!(tx, "TCP send error: {:?}", e))
-                        .unwrap();
+                    if let Err(e) = write!(socket, "hello\n").map(|_| {
+                        socket.close();
+                    }) {
+                        info!("TCP send error: {:?}", e);
+                    }
                 }
             }
             Ok(false) => {
@@ -182,7 +218,7 @@ fn main() -> ! {
             Err(e) =>
             // Ignore malformed packets
             {
-                writeln!(tx, "Error: {:?}", e).unwrap()
+                info!("Error: {:?}", e);
             }
         }
     }
