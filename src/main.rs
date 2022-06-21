@@ -23,9 +23,9 @@ use fugit::RateExtU32;
 
 use smoltcp::iface::{Interface, InterfaceBuilder, NeighborCache, Routes};
 use smoltcp::phy::Device;
-use smoltcp::socket::{Dhcpv4Event, Dhcpv4Socket, TcpSocket, TcpSocketBuffer};
+use smoltcp::socket::{Dhcpv4Event, Dhcpv4Socket, UdpPacketMetadata, UdpSocket, UdpSocketBuffer};
 use smoltcp::time::Instant;
-use smoltcp::wire::{EthernetAddress, IpCidr, Ipv4Address, Ipv4Cidr};
+use smoltcp::wire::{EthernetAddress, IpAddress::Ipv4, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr};
 
 use stm32_eth::{EthPins, RingEntry};
 
@@ -71,6 +71,9 @@ impl log::Log for SerialLogger {
 }
 
 static LOGGER: SerialLogger = SerialLogger::new();
+
+const PATCH_PORT: u16 = 19874;
+const PATCH_ADDR: [u8; 4] = [239, 0, 0, 0];
 
 use apiary::{Ui, UiPins};
 
@@ -142,6 +145,7 @@ fn main() -> ! {
     let mut routes_storage = [None; 1];
     let routes = Routes::new(&mut routes_storage[..]);
     let ethernet_addr = EthernetAddress(SRC_MAC);
+    let mut ipv4_multicast_storage = [None; 1];
 
     let mut sockets: [_; 2] = Default::default();
     let mut iface = InterfaceBuilder::new(&mut eth_dma, &mut sockets[..])
@@ -149,19 +153,30 @@ fn main() -> ! {
         .ip_addrs(&mut ip_addrs[..])
         .routes(routes)
         .neighbor_cache(neighbor_cache)
+        .ipv4_multicast_groups(&mut ipv4_multicast_storage[..])
         .finalize();
 
     let dhcp_socket = Dhcpv4Socket::new();
     let dhcp_handle = iface.add_socket(dhcp_socket);
     let mut dhcp_configured = false;
 
-    let mut server_rx_buffer = [0; 2048];
-    let mut server_tx_buffer = [0; 2048];
-    let server_socket = TcpSocket::new(
-        TcpSocketBuffer::new(&mut server_rx_buffer[..]),
-        TcpSocketBuffer::new(&mut server_tx_buffer[..]),
+    let mut server_rx_metadata_buffer = [UdpPacketMetadata::EMPTY; 4];
+    let mut server_rx_payload_buffer = [0; 2048];
+    let mut server_tx_metadata_buffer = [UdpPacketMetadata::EMPTY; 4];
+    let mut server_tx_payload_buffer = [0; 2048];
+    let server_socket = UdpSocket::new(
+        UdpSocketBuffer::new(
+            &mut server_rx_metadata_buffer[..],
+            &mut server_rx_payload_buffer[..],
+        ),
+        UdpSocketBuffer::new(
+            &mut server_tx_metadata_buffer[..],
+            &mut server_tx_payload_buffer[..],
+        ),
     );
     let server_handle = iface.add_socket(server_socket);
+    let broadcast_endpoint =
+        IpEndpoint::new(Ipv4(Ipv4Address::from_bytes(&PATCH_ADDR)), PATCH_PORT);
 
     info!("Sockets created and starting main loop");
 
@@ -172,7 +187,19 @@ fn main() -> ! {
             *eth_pending = false;
         });
 
-        ui.poll();
+        let ui_result = ui.poll();
+        {
+            let socket = iface.get_socket::<UdpSocket>(server_handle);
+            if socket.can_send() && dhcp_configured && ui_result {
+                info!("{} => HALT", broadcast_endpoint);
+                if let Err(e) = socket.send_slice(
+                    b"{\"message\": \"HALT\", \"uuid\": \"GLOBAL\"}",
+                    broadcast_endpoint,
+                ) {
+                    info!("UDP send error: {:?}", e);
+                }
+            }
+        }
 
         match iface.poll(Instant::from_millis(time as i64)) {
             Ok(true) => {
@@ -198,6 +225,14 @@ fn main() -> ! {
                                 info!("DNS server {}:    {}", i, s);
                             }
                         }
+
+                        match iface.join_multicast_group(
+                            Ipv4Address::from_bytes(&PATCH_ADDR),
+                            Instant::from_millis(time as i64),
+                        ) {
+                            Ok(sent) => info!("Address added to multicast and sent: {}", sent),
+                            Err(e) => info!("Multicast join failed: {}", e),
+                        }
                         dhcp_configured = true;
                     }
                     Some(Dhcpv4Event::Deconfigured) => {
@@ -211,18 +246,11 @@ fn main() -> ! {
                     continue;
                 }
 
-                let socket = iface.get_socket::<TcpSocket>(server_handle);
+                let socket = iface.get_socket::<UdpSocket>(server_handle);
                 if !socket.is_open() {
-                    if let Err(e) = socket.listen(80) {
-                        info!("TCP listen error: {:?}", e);
-                    }
-                }
-
-                if socket.can_send() {
-                    if let Err(e) = write!(socket, "hello\n").map(|_| {
-                        socket.close();
-                    }) {
-                        info!("TCP send error: {:?}", e);
+                    info!("Opening UDP listener socket");
+                    if let Err(e) = socket.bind(19874) {
+                        info!("UDP listen error: {:?}", e);
                     }
                 }
             }

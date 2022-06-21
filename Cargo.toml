@@ -26,10 +26,10 @@ log = "0.4.6"
 # version = "0.7.1"
 
 [dependencies.smoltcp]
-version = "0.8"
+version = "0.8.1"
 default-features = false
 features = [
-    "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-icmp",
+    "medium-ethernet", "proto-ipv4", "socket-udp", "proto-igmp",
     "log", "verbose", "socket-dhcpv4"
 ]
 
