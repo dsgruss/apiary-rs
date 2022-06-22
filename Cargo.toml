@@ -15,27 +15,17 @@ panic-semihosting = "0.6.0"
 fugit = "0.3"
 log = "0.4.6"
 
-# Uncomment for the allocator example.
-# alloc-cortex-m = "0.4.0"
-
-# Uncomment for the device example.
-# Update `memory.x`, set target to `thumbv7em-none-eabihf` in `.cargo/config`,
-# and then use `cargo build --examples device` to build it.
-# [dependencies.stm32f3]
-# features = ["stm32f303", "rt"]
-# version = "0.7.1"
-
 [dependencies.smoltcp]
 version = "0.8.1"
 default-features = false
 features = [
     "medium-ethernet", "proto-ipv4", "socket-udp", "proto-igmp",
-    "log", "verbose", "socket-dhcpv4"
+    "socket-dhcpv4"
 ]
 
 [dependencies.stm32-eth]
 git = "https://github.com/stm32-rs/stm32-eth"
-features = ["stm32f429", "smoltcp-phy", "log"]
+features = ["stm32f429", "smoltcp-phy"]
 rev = "ae3a846"
 
 # this lets you use `cargo fix`!
