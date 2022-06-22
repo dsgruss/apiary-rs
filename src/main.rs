@@ -21,17 +21,9 @@ use core::fmt::Write;
 
 use fugit::RateExtU32;
 
-use smoltcp::iface::{Interface, InterfaceBuilder, NeighborCache, Routes};
-use smoltcp::phy::Device;
-use smoltcp::socket::{Dhcpv4Event, Dhcpv4Socket, UdpPacketMetadata, UdpSocket, UdpSocketBuffer};
-use smoltcp::time::Instant;
-use smoltcp::wire::{EthernetAddress, IpAddress::Ipv4, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr};
-
 use stm32_eth::{EthPins, RingEntry};
 
-const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
-
-static TIME: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
+static TIME: Mutex<RefCell<i64>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
 #[macro_use]
@@ -72,10 +64,7 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger::new();
 
-const PATCH_PORT: u16 = 19874;
-const PATCH_ADDR: [u8; 4] = [239, 0, 0, 0];
-
-use apiary::{Directive, Ui, UiPins};
+use apiary::{NetworkInterfaceStorage, NetworkInterface, protocol::Directive, ui::Ui, ui::UiPins};
 
 #[entry]
 fn main() -> ! {
@@ -138,124 +127,32 @@ fn main() -> ! {
 
     eth_dma.enable_interrupt();
 
-    let ip_addr = IpCidr::new(Ipv4Address::UNSPECIFIED.into(), 0);
-    let mut ip_addrs = [ip_addr];
-    let mut neighbor_storage = [None; 16];
-    let neighbor_cache = NeighborCache::new(&mut neighbor_storage[..]);
-    let mut routes_storage = [None; 1];
-    let routes = Routes::new(&mut routes_storage[..]);
-    let ethernet_addr = EthernetAddress(SRC_MAC);
-    let mut ipv4_multicast_storage = [None; 1];
-
-    let mut sockets: [_; 2] = Default::default();
-    let mut iface = InterfaceBuilder::new(&mut eth_dma, &mut sockets[..])
-        .hardware_addr(ethernet_addr.into())
-        .ip_addrs(&mut ip_addrs[..])
-        .routes(routes)
-        .neighbor_cache(neighbor_cache)
-        .ipv4_multicast_groups(&mut ipv4_multicast_storage[..])
-        .finalize();
-
-    let dhcp_socket = Dhcpv4Socket::new();
-    let dhcp_handle = iface.add_socket(dhcp_socket);
-    let mut dhcp_configured = false;
-
-    let mut server_rx_metadata_buffer = [UdpPacketMetadata::EMPTY; 4];
-    let mut server_rx_payload_buffer = [0; 2048];
-    let mut server_tx_metadata_buffer = [UdpPacketMetadata::EMPTY; 4];
-    let mut server_tx_payload_buffer = [0; 2048];
-    let server_socket = UdpSocket::new(
-        UdpSocketBuffer::new(
-            &mut server_rx_metadata_buffer[..],
-            &mut server_rx_payload_buffer[..],
-        ),
-        UdpSocketBuffer::new(
-            &mut server_tx_metadata_buffer[..],
-            &mut server_tx_payload_buffer[..],
-        ),
-    );
-    let server_handle = iface.add_socket(server_socket);
-    let broadcast_endpoint =
-        IpEndpoint::new(Ipv4(Ipv4Address::from_bytes(&PATCH_ADDR)), PATCH_PORT);
+    let mut storage = NetworkInterfaceStorage::new();
+    let mut network = NetworkInterface::new(&mut eth_dma, &mut storage);
 
     info!("Sockets created and starting main loop");
 
     let halt = Directive::Halt { uuid: "GLOBAL" };
-    let mut message_buffer = [0; 2048];
 
     loop {
-        let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
+        let time: i64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         cortex_m::interrupt::free(|cs| {
             let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
             *eth_pending = false;
         });
 
-        let ui_result = ui.poll();
-        {
-            let socket = iface.get_socket::<UdpSocket>(server_handle);
-            if socket.can_send() && dhcp_configured && ui_result {
-                info!("{} => HALT", broadcast_endpoint);
-                let len = serde_json_core::to_slice(&halt, &mut message_buffer).unwrap();
-                if let Err(e) = socket.send_slice(&message_buffer[0..len], broadcast_endpoint) {
+        if ui.poll() {
+            if network.can_send() {
+                info!("=> HALT");
+                if let Err(e) = network.send(&halt) {
                     info!("UDP send error: {:?}", e);
                 }
             }
         }
 
-        match iface.poll(Instant::from_millis(time as i64)) {
-            Ok(true) => {
-                let event = iface.get_socket::<Dhcpv4Socket>(dhcp_handle).poll();
-                match event {
-                    None => {}
-                    Some(Dhcpv4Event::Configured(config)) => {
-                        info!("DHCP config acquired!");
-
-                        info!("IP address:      {}", config.address);
-                        set_ipv4_addr(&mut iface, config.address);
-
-                        if let Some(router) = config.router {
-                            info!("Default gateway: {}", router);
-                            iface.routes_mut().add_default_ipv4_route(router).unwrap();
-                        } else {
-                            info!("Default gateway: None");
-                            iface.routes_mut().remove_default_ipv4_route();
-                        }
-
-                        for (i, s) in config.dns_servers.iter().enumerate() {
-                            if let Some(s) = s {
-                                info!("DNS server {}:    {}", i, s);
-                            }
-                        }
-
-                        match iface.join_multicast_group(
-                            Ipv4Address::from_bytes(&PATCH_ADDR),
-                            Instant::from_millis(time as i64),
-                        ) {
-                            Ok(sent) => info!("Address added to multicast and sent: {}", sent),
-                            Err(e) => info!("Multicast join failed: {}", e),
-                        }
-                        dhcp_configured = true;
-                    }
-                    Some(Dhcpv4Event::Deconfigured) => {
-                        info!("DHCP lost config!");
-                        set_ipv4_addr(&mut iface, Ipv4Cidr::new(Ipv4Address::UNSPECIFIED, 0));
-                        iface.routes_mut().remove_default_ipv4_route();
-                        dhcp_configured = false;
-                    }
-                }
-                if !dhcp_configured {
-                    continue;
-                }
-
-                let socket = iface.get_socket::<UdpSocket>(server_handle);
-                if !socket.is_open() {
-                    info!("Opening UDP listener socket");
-                    if let Err(e) = socket.bind(19874) {
-                        info!("UDP listen error: {:?}", e);
-                    }
-                }
-            }
-            Ok(false) => {
+        match network.poll(time) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
                 // Sleep if no ethernet work is pending
                 cortex_m::interrupt::free(|cs| {
                     let eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
@@ -271,16 +168,6 @@ fn main() -> ! {
             }
         }
     }
-}
-
-fn set_ipv4_addr<DeviceT>(iface: &mut Interface<'_, DeviceT>, cidr: Ipv4Cidr)
-where
-    DeviceT: for<'d> Device<'d>,
-{
-    iface.update_ip_addrs(|addrs| {
-        let dest = addrs.iter_mut().next().unwrap();
-        *dest = IpCidr::Ipv4(cidr);
-    });
 }
 
 fn setup_systick(syst: &mut SYST) {
