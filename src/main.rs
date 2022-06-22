@@ -75,7 +75,7 @@ static LOGGER: SerialLogger = SerialLogger::new();
 const PATCH_PORT: u16 = 19874;
 const PATCH_ADDR: [u8; 4] = [239, 0, 0, 0];
 
-use apiary::{Ui, UiPins};
+use apiary::{Directive, Ui, UiPins};
 
 #[entry]
 fn main() -> ! {
@@ -180,6 +180,9 @@ fn main() -> ! {
 
     info!("Sockets created and starting main loop");
 
+    let halt = Directive::Halt { uuid: "GLOBAL" };
+    let mut message_buffer = [0; 2048];
+
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         cortex_m::interrupt::free(|cs| {
@@ -192,10 +195,8 @@ fn main() -> ! {
             let socket = iface.get_socket::<UdpSocket>(server_handle);
             if socket.can_send() && dhcp_configured && ui_result {
                 info!("{} => HALT", broadcast_endpoint);
-                if let Err(e) = socket.send_slice(
-                    b"{\"message\": \"HALT\", \"uuid\": \"GLOBAL\"}",
-                    broadcast_endpoint,
-                ) {
+                let len = serde_json_core::to_slice(&halt, &mut message_buffer).unwrap();
+                if let Err(e) = socket.send_slice(&message_buffer[0..len], broadcast_endpoint) {
                     info!("UDP send error: {:?}", e);
                 }
             }

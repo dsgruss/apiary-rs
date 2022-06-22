@@ -3,6 +3,8 @@
 use stm32_eth::hal::gpio;
 use stm32_eth::hal::gpio::Output;
 
+use serde::{Deserialize, Serialize};
+
 #[macro_use]
 extern crate log;
 
@@ -102,4 +104,9 @@ impl Ui {
         }
         self.sw_sig2.just_pressed()
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum Directive<'a> {
+    Halt { uuid: &'a str },
 }
