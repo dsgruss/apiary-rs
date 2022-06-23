@@ -10,12 +10,17 @@ const PATCH_PORT: u16 = 19874;
 const PATCH_ADDR: [u8; 4] = [239, 0, 0, 0];
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
-use smoltcp::Error;
-use smoltcp::iface::{Interface, InterfaceBuilder, Neighbor, NeighborCache, Route, Routes, SocketHandle, SocketStorage};
+use smoltcp::iface::{
+    Interface, InterfaceBuilder, Neighbor, NeighborCache, Route, Routes, SocketHandle,
+    SocketStorage,
+};
 use smoltcp::phy::Device;
 use smoltcp::socket::{Dhcpv4Event, Dhcpv4Socket, UdpPacketMetadata, UdpSocket, UdpSocketBuffer};
 use smoltcp::time::Instant;
-use smoltcp::wire::{EthernetAddress, IpAddress, IpAddress::Ipv4, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr};
+use smoltcp::wire::{
+    EthernetAddress, IpAddress, IpAddress::Ipv4, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr,
+};
+use smoltcp::Error;
 
 use crate::protocol::Directive;
 
@@ -58,13 +63,13 @@ pub struct NetworkInterface<'a, DeviceT: for<'d> Device<'d>> {
 
 impl<'a, DeviceT> NetworkInterface<'a, DeviceT>
 where
-    DeviceT: for<'d> Device<'d> 
+    DeviceT: for<'d> Device<'d>,
 {
     pub fn new(device: DeviceT, storage: &'a mut NetworkInterfaceStorage<'a>) -> Self {
         let neighbor_cache = NeighborCache::new(&mut storage.neighbor_storage[..]);
         let routes = Routes::new(&mut storage.routes_storage[..]);
         let ethernet_addr = EthernetAddress(SRC_MAC);
- 
+
         let mut iface = InterfaceBuilder::new(device, &mut storage.sockets[..])
             .hardware_addr(ethernet_addr.into())
             .ip_addrs(&mut storage.ip_addrs[..])
@@ -72,10 +77,10 @@ where
             .neighbor_cache(neighbor_cache)
             .ipv4_multicast_groups(&mut storage.ipv4_multicast_storage[..])
             .finalize();
-    
+
         let dhcp_socket = Dhcpv4Socket::new();
         let dhcp_handle = iface.add_socket(dhcp_socket);
-    
+
         let server_socket = UdpSocket::new(
             UdpSocketBuffer::new(
                 &mut storage.server_rx_metadata_buffer[..],
@@ -108,19 +113,20 @@ where
                     let socket = self.iface.get_socket::<UdpSocket>(self.server_handle);
                     if !socket.is_open() {
                         info!("Opening UDP listener socket");
-                        if let Err(e) = socket.bind(19874) {
-                            info!("UDP listen error: {:?}", e);
+                        socket.bind(PATCH_PORT)?;
+                    }
+                    if socket.can_recv() {
+                        let (buf, _) = socket.recv()?;
+                        match serde_json_core::from_slice(buf) {
+                            Ok((out, _)) => return Ok(out),
+                            Err(_) => return Err(Error::Dropped),
                         }
                     }
                 }
                 Ok(None)
             }
-            Ok(false) => {
-                Ok(None)
-            }
-            Err(e) => {
-                Err(e)
-            }
+            Ok(false) => Ok(None),
+            Err(e) => Err(e),
         }
     }
 
@@ -132,9 +138,7 @@ where
                     socket.send_slice(&self.message_buffer[0..len], self.broadcast_endpoint)?;
                     Ok(())
                 }
-                Err(_) => {
-                    Err(Error::Dropped)
-                }
+                Err(_) => Err(Error::Dropped),
             }
         } else {
             Err(Error::Dropped)
@@ -147,7 +151,10 @@ where
     }
 
     fn dhcp_poll(&mut self, time: i64) {
-        let event = self.iface.get_socket::<Dhcpv4Socket>(self.dhcp_handle).poll();
+        let event = self
+            .iface
+            .get_socket::<Dhcpv4Socket>(self.dhcp_handle)
+            .poll();
         match event {
             None => {}
             Some(Dhcpv4Event::Configured(config)) => {
@@ -158,7 +165,10 @@ where
 
                 if let Some(router) = config.router {
                     info!("Default gateway: {}", router);
-                    self.iface.routes_mut().add_default_ipv4_route(router).unwrap();
+                    self.iface
+                        .routes_mut()
+                        .add_default_ipv4_route(router)
+                        .unwrap();
                 } else {
                     info!("Default gateway: None");
                     self.iface.routes_mut().remove_default_ipv4_route();

@@ -64,7 +64,7 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger::new();
 
-use apiary::{NetworkInterfaceStorage, NetworkInterface, protocol::Directive, ui::Ui, ui::UiPins};
+use apiary::{protocol::Directive, ui::Ui, ui::UiPins, NetworkInterface, NetworkInterfaceStorage};
 
 #[entry]
 fn main() -> ! {
@@ -151,7 +151,9 @@ fn main() -> ! {
         }
 
         match network.poll(time) {
-            Ok(Some(_)) => {}
+            Ok(Some(directive)) => {
+                info!("Got directive: {:?}", directive);
+            }
             Ok(None) => {
                 // Sleep if no ethernet work is pending
                 cortex_m::interrupt::free(|cs| {
