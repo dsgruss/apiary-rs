@@ -4,14 +4,13 @@
 use panic_semihosting as _;
 // use panic_itm as _;
 
-use cortex_m::asm;
-use cortex_m_rt::{entry, exception};
+use cortex_m_rt::entry;
 use stm32_eth::{
     hal::gpio::GpioExt,
     hal::prelude::*,
     hal::rcc::RccExt,
     hal::serial::Tx,
-    stm32::{interrupt, CorePeripherals, Peripherals, SYST, USART3},
+    stm32::{interrupt, CorePeripherals, Peripherals, USART3},
 };
 
 use core::cell::RefCell;
@@ -22,9 +21,6 @@ use core::fmt::Write;
 use fugit::RateExtU32;
 
 use stm32_eth::{EthPins, RingEntry};
-
-static TIME: Mutex<RefCell<i64>> = Mutex::new(RefCell::new(0));
-static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
 #[macro_use]
 extern crate log;
@@ -69,13 +65,15 @@ use apiary::{protocol::Directive, ui::Ui, ui::UiPins, NetworkInterface, NetworkI
 #[entry]
 fn main() -> ! {
     let p = Peripherals::take().unwrap();
-    let mut cp = CorePeripherals::take().unwrap();
+    let cp = CorePeripherals::take().unwrap();
 
     let rcc = p.RCC.constrain();
-    // HCLK must be at least 25MHz to use the ethernet peripheral
-    let clocks = rcc.cfgr.sysclk(32.MHz()).hclk(32.MHz()).freeze();
-
-    setup_systick(&mut cp.SYST);
+    let clocks = rcc
+        .cfgr
+        .use_hse(8.MHz())
+        .sysclk(168.MHz())
+        .require_pll48clk()
+        .freeze();
 
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
@@ -92,6 +90,8 @@ fn main() -> ! {
         .map(|()| log::set_max_level(LevelFilter::Info))
         .unwrap();
     info!("Serial debug active");
+
+    let mut rand_source = p.RNG.constrain(&clocks);
 
     let ui_pins = UiPins {
         sw_sig2: gpiod.pd12,
@@ -134,12 +134,13 @@ fn main() -> ! {
 
     let halt = Directive::Halt { uuid: "GLOBAL" };
 
+    let mut timer = cp.SYST.counter_us(&clocks);
+    let mut time: i64 = 0;
+    timer.start(1.millis()).unwrap();
+
     loop {
-        let time: i64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
-        cortex_m::interrupt::free(|cs| {
-            let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
-            *eth_pending = false;
-        });
+        nb::block!(timer.wait()).unwrap();
+        time += 1;
 
         if ui.poll() {
             if network.can_send() {
@@ -154,16 +155,7 @@ fn main() -> ! {
             Ok(Some(directive)) => {
                 info!("Got directive: {:?}", directive);
             }
-            Ok(None) => {
-                // Sleep if no ethernet work is pending
-                cortex_m::interrupt::free(|cs| {
-                    let eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
-                    if !*eth_pending {
-                        asm::wfi();
-                        // Awaken by interrupt
-                    }
-                });
-            }
+            Ok(None) => {}
             Err(e) => {
                 // Ignore malformed packets
                 info!("Error: {:?}", e);
@@ -172,27 +164,8 @@ fn main() -> ! {
     }
 }
 
-fn setup_systick(syst: &mut SYST) {
-    syst.set_reload(SYST::get_ticks_per_10ms() / 10);
-    syst.enable_counter();
-    syst.enable_interrupt();
-}
-
-#[exception]
-fn SysTick() {
-    cortex_m::interrupt::free(|cs| {
-        let mut time = TIME.borrow(cs).borrow_mut();
-        *time += 1;
-    })
-}
-
 #[interrupt]
 fn ETH() {
-    cortex_m::interrupt::free(|cs| {
-        let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
-        *eth_pending = true;
-    });
-
     // Clear interrupt flags
     let p = unsafe { Peripherals::steal() };
     stm32_eth::eth_interrupt_handler(&p.ETHERNET_DMA);
