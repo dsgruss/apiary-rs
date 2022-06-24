@@ -3,12 +3,15 @@
 #[macro_use]
 extern crate log;
 
+// pub mod leader_election;
 pub mod protocol;
 pub mod ui;
 
 const PATCH_PORT: u16 = 19874;
 const PATCH_ADDR: [u8; 4] = [239, 0, 0, 0];
-const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
+const JACK_PORT: u16 = 19991;
+const JACK_ADDR: [u8; 4] = [239, 1, 2, 3];
+const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xca, 0x55, 0xe7, 0x7e];
 
 use smoltcp::iface::{
     Interface, InterfaceBuilder, Neighbor, NeighborCache, Route, Routes, SocketHandle,
@@ -28,12 +31,12 @@ pub struct NetworkInterfaceStorage<'a> {
     ip_addrs: [IpCidr; 1],
     neighbor_storage: [Option<(IpAddress, Neighbor)>; 16],
     routes_storage: [Option<(IpCidr, Route)>; 1],
-    ipv4_multicast_storage: [Option<(Ipv4Address, ())>; 1],
+    ipv4_multicast_storage: [Option<(Ipv4Address, ())>; 2],
     sockets: [SocketStorage<'a>; 2],
     server_rx_metadata_buffer: [UdpPacketMetadata; 4],
     server_rx_payload_buffer: [u8; 2048],
-    server_tx_metadata_buffer: [UdpPacketMetadata; 4],
-    server_tx_payload_buffer: [u8; 2048],
+    server_tx_metadata_buffer: [UdpPacketMetadata; 20],
+    server_tx_payload_buffer: [u8; 16_000],
 }
 
 impl NetworkInterfaceStorage<'_> {
@@ -42,12 +45,12 @@ impl NetworkInterfaceStorage<'_> {
             ip_addrs: [IpCidr::new(Ipv4Address::UNSPECIFIED.into(), 0)],
             neighbor_storage: [None; 16],
             routes_storage: [None; 1],
-            ipv4_multicast_storage: [None; 1],
+            ipv4_multicast_storage: [None; 2],
             sockets: Default::default(),
             server_rx_metadata_buffer: [UdpPacketMetadata::EMPTY; 4],
             server_rx_payload_buffer: [0; 2048],
-            server_tx_metadata_buffer: [UdpPacketMetadata::EMPTY; 4],
-            server_tx_payload_buffer: [0; 2048],
+            server_tx_metadata_buffer: [UdpPacketMetadata::EMPTY; 20],
+            server_tx_payload_buffer: [0; 16_000],
         }
     }
 }
@@ -58,6 +61,7 @@ pub struct NetworkInterface<'a, DeviceT: for<'d> Device<'d>> {
     dhcp_configured: bool,
     server_handle: SocketHandle,
     broadcast_endpoint: IpEndpoint,
+    jack_endpoint: IpEndpoint,
     message_buffer: [u8; 2048],
 }
 
@@ -94,6 +98,8 @@ where
         let server_handle = iface.add_socket(server_socket);
         let broadcast_endpoint =
             IpEndpoint::new(Ipv4(Ipv4Address::from_bytes(&PATCH_ADDR)), PATCH_PORT);
+        let jack_endpoint =
+            IpEndpoint::new(Ipv4(Ipv4Address::from_bytes(&JACK_ADDR)), JACK_PORT);
 
         NetworkInterface {
             iface,
@@ -101,6 +107,7 @@ where
             dhcp_configured: false,
             server_handle,
             broadcast_endpoint,
+            jack_endpoint,
             message_buffer: [0; 2048],
         }
     }
@@ -145,6 +152,31 @@ where
         }
     }
 
+    pub fn send_jack_data(&mut self, data: &[u8; 2 * 8 * 48]) -> Result<(), Error> {
+        let socket = self.iface.get_socket::<UdpSocket>(self.server_handle);
+        if socket.can_send() && self.dhcp_configured {
+            // At the moment, this isn't great. Ideally, we want a zero-copy view here into the data
+            // to stop it from having too many copies or loops
+            /*
+            let mut i = 0;
+            for x in data {
+                for y in x {
+                    let z = y.to_le_bytes();
+                    self.message_buffer[i] = z[0];
+                    self.message_buffer[i + 1] = z[1];
+                    i += 2;
+                }
+            }
+            */
+            for i in (0..12) {
+                socket.send_slice(data, self.jack_endpoint)?;
+            }
+            Ok(())
+        } else {
+            Err(Error::Dropped)
+        }
+    }
+
     pub fn can_send(&mut self) -> bool {
         let socket = self.iface.get_socket::<UdpSocket>(self.server_handle);
         socket.can_send() && self.dhcp_configured
@@ -180,12 +212,14 @@ where
                     }
                 }
 
-                match self.iface.join_multicast_group(
-                    Ipv4Address::from_bytes(&PATCH_ADDR),
-                    Instant::from_millis(time),
-                ) {
-                    Ok(sent) => info!("Address added to multicast and sent: {}", sent),
-                    Err(e) => info!("Multicast join failed: {}", e),
+                for addr in [PATCH_ADDR, JACK_ADDR] {
+                    match self.iface.join_multicast_group(
+                        Ipv4Address::from_bytes(&addr),
+                        Instant::from_millis(time),
+                    ) {
+                        Ok(sent) => info!("Address added to multicast and sent: {}", sent),
+                        Err(e) => info!("Multicast join failed: {}", e),
+                    }
                 }
                 self.dhcp_configured = true;
             }

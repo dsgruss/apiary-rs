@@ -18,7 +18,7 @@ use cortex_m::interrupt::Mutex;
 
 use core::fmt::Write;
 
-use fugit::RateExtU32;
+use fugit::{RateExtU32, Duration};
 
 use stm32_eth::{EthPins, RingEntry};
 
@@ -113,7 +113,7 @@ fn main() -> ! {
     };
 
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();
-    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
+    let mut tx_ring: [RingEntry<_>; 16] = Default::default();
     let (mut eth_dma, _eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_MMC,
@@ -133,15 +133,20 @@ fn main() -> ! {
     info!("Sockets created and starting main loop");
 
     let halt = Directive::Halt { uuid: "GLOBAL" };
+    let data = [7_u8; 2 * 8 * 48];
 
     let mut timer = cp.SYST.counter_us(&clocks);
     let mut time: i64 = 0;
+    let mut ui_accum = 0;
+    let mut send_accum = 0;
+    let mut poll_accum = 0;
     timer.start(1.millis()).unwrap();
 
     loop {
         nb::block!(timer.wait()).unwrap();
         time += 1;
 
+        let ui_start = timer.now().ticks();
         if ui.poll() {
             if network.can_send() {
                 info!("=> HALT");
@@ -150,7 +155,19 @@ fn main() -> ! {
                 }
             }
         }
+        ui_accum += (timer.now().ticks() - ui_start);
 
+        let send_start = timer.now().ticks();
+        if network.can_send() {
+            for _ in (0..1) {
+                if let Err(e) = network.send_jack_data(&data) {
+                    info!("Data send error: {:?}", e);
+                }
+            }
+        }
+        send_accum += (timer.now().ticks() - send_start);
+
+        let poll_start = timer.now().ticks();
         match network.poll(time) {
             Ok(Some(directive)) => {
                 info!("Got directive: {:?}", directive);
@@ -160,6 +177,14 @@ fn main() -> ! {
                 // Ignore malformed packets
                 info!("Error: {:?}", e);
             }
+        }
+        poll_accum += (timer.now().ticks() - poll_start);
+
+        if time % 1000 == 0 {
+            info!("Average times (us): ui {}, send {}, poll {}", ui_accum / 1000, send_accum / 1000, poll_accum / 1000);
+            ui_accum = 0;
+            send_accum = 0;
+            poll_accum = 0;
         }
     }
 }
