@@ -98,8 +98,7 @@ where
         let server_handle = iface.add_socket(server_socket);
         let broadcast_endpoint =
             IpEndpoint::new(Ipv4(Ipv4Address::from_bytes(&PATCH_ADDR)), PATCH_PORT);
-        let jack_endpoint =
-            IpEndpoint::new(Ipv4(Ipv4Address::from_bytes(&JACK_ADDR)), JACK_PORT);
+        let jack_endpoint = IpEndpoint::new(Ipv4(Ipv4Address::from_bytes(&JACK_ADDR)), JACK_PORT);
 
         NetworkInterface {
             iface,
@@ -168,7 +167,7 @@ where
                 }
             }
             */
-            for i in (0..12) {
+            for _ in 0..12 {
                 socket.send_slice(data, self.jack_endpoint)?;
             }
             Ok(())

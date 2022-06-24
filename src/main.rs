@@ -18,7 +18,7 @@ use cortex_m::interrupt::Mutex;
 
 use core::fmt::Write;
 
-use fugit::{RateExtU32, Duration};
+use fugit::RateExtU32;
 
 use stm32_eth::{EthPins, RingEntry};
 
@@ -91,7 +91,7 @@ fn main() -> ! {
         .unwrap();
     info!("Serial debug active");
 
-    let mut rand_source = p.RNG.constrain(&clocks);
+    // let mut rand_source = p.RNG.constrain(&clocks);
 
     let ui_pins = UiPins {
         sw_sig2: gpiod.pd12,
@@ -155,17 +155,15 @@ fn main() -> ! {
                 }
             }
         }
-        ui_accum += (timer.now().ticks() - ui_start);
+        ui_accum += timer.now().ticks() - ui_start;
 
         let send_start = timer.now().ticks();
         if network.can_send() {
-            for _ in (0..1) {
-                if let Err(e) = network.send_jack_data(&data) {
-                    info!("Data send error: {:?}", e);
-                }
+            if let Err(e) = network.send_jack_data(&data) {
+                info!("Data send error: {:?}", e);
             }
         }
-        send_accum += (timer.now().ticks() - send_start);
+        send_accum += timer.now().ticks() - send_start;
 
         let poll_start = timer.now().ticks();
         match network.poll(time) {
@@ -178,10 +176,15 @@ fn main() -> ! {
                 info!("Error: {:?}", e);
             }
         }
-        poll_accum += (timer.now().ticks() - poll_start);
+        poll_accum += timer.now().ticks() - poll_start;
 
         if time % 1000 == 0 {
-            info!("Average times (us): ui {}, send {}, poll {}", ui_accum / 1000, send_accum / 1000, poll_accum / 1000);
+            info!(
+                "Average times (us): ui {}, send {}, poll {}",
+                ui_accum / 1000,
+                send_accum / 1000,
+                poll_accum / 1000
+            );
             ui_accum = 0;
             send_accum = 0;
             poll_accum = 0;
