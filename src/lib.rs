@@ -13,6 +13,10 @@ const JACK_PORT: u16 = 19991;
 const JACK_ADDR: [u8; 4] = [239, 1, 2, 3];
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xca, 0x55, 0xe7, 0x7e];
 
+const CHANNELS: usize = 8;
+const BLOCK_SIZE: usize = 48;
+type SampleType = i16;
+
 use smoltcp::iface::{
     Interface, InterfaceBuilder, Neighbor, NeighborCache, Route, Routes, SocketHandle,
     SocketStorage,
@@ -24,8 +28,27 @@ use smoltcp::wire::{
     EthernetAddress, IpAddress, IpAddress::Ipv4, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr,
 };
 use smoltcp::Error;
+use zerocopy::AsBytes;
 
 use crate::protocol::Directive;
+
+#[derive(AsBytes, Copy, Clone, Debug)]
+#[repr(C)]
+pub struct AudioFrame {
+    pub data: [SampleType; CHANNELS],
+}
+
+#[derive(AsBytes, Debug)]
+#[repr(C)]
+pub struct AudioPacket {
+    pub data: [AudioFrame; BLOCK_SIZE],
+}
+
+impl AudioPacket {
+    pub fn new() -> Self {
+        AudioPacket { data: [AudioFrame { data: [0; 8] }; 48] }
+    }
+}
 
 pub struct NetworkInterfaceStorage<'a> {
     ip_addrs: [IpCidr; 1],
@@ -151,25 +174,10 @@ where
         }
     }
 
-    pub fn send_jack_data(&mut self, data: &[u8; 2 * 8 * 48]) -> Result<(), Error> {
+    pub fn send_jack_data(&mut self, data: &AudioPacket) -> Result<(), Error> {
         let socket = self.iface.get_socket::<UdpSocket>(self.server_handle);
         if socket.can_send() && self.dhcp_configured {
-            // At the moment, this isn't great. Ideally, we want a zero-copy view here into the data
-            // to stop it from having too many copies or loops
-            /*
-            let mut i = 0;
-            for x in data {
-                for y in x {
-                    let z = y.to_le_bytes();
-                    self.message_buffer[i] = z[0];
-                    self.message_buffer[i + 1] = z[1];
-                    i += 2;
-                }
-            }
-            */
-            for _ in 0..12 {
-                socket.send_slice(data, self.jack_endpoint)?;
-            }
+            socket.send_slice(&data.as_bytes(), self.jack_endpoint)?;
             Ok(())
         } else {
             Err(Error::Dropped)

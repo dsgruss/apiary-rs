@@ -19,6 +19,7 @@ serde-json-core = "0.4.0"
 heapless = { version = "0.7.0", features = ["serde"] }
 managed = { version = "0.8.0", default-features = false }
 nb = "1"
+zerocopy = "0.6.1"
 
 [dependencies.smoltcp]
 version = "0.8.1"

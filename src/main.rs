@@ -6,6 +6,8 @@ use panic_semihosting as _;
 
 use cortex_m_rt::entry;
 use stm32_eth::{
+    hal::adc::Adc,
+    hal::adc::config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
     hal::gpio::GpioExt,
     hal::prelude::*,
     hal::rcc::RccExt,
@@ -60,7 +62,7 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger::new();
 
-use apiary::{protocol::Directive, ui::Ui, ui::UiPins, NetworkInterface, NetworkInterfaceStorage};
+use apiary::{protocol::Directive, ui::Ui, ui::UiPins, NetworkInterface, NetworkInterfaceStorage, AudioPacket};
 
 #[entry]
 fn main() -> ! {
@@ -130,16 +132,30 @@ fn main() -> ! {
     let mut storage = NetworkInterfaceStorage::new();
     let mut network = NetworkInterface::new(&mut eth_dma, &mut storage);
 
-    info!("Sockets created and starting main loop");
+    info!("Sockets created");
+    
+    let adc_config = AdcConfig::default()
+        .clock(Clock::Pclk2_div_8)
+        .scan(Scan::Enabled)
+        .continuous(Continuous::Single);
+
+    let mut adc = Adc::adc3(p.ADC3, true, adc_config);
+    let pa0 = gpioa.pa0.into_analog();
+    let mut sample = adc.convert(&pa0, SampleTime::Cycles_480);
+    let millivolts = adc.sample_to_millivolts(sample);
+    info!("ADC current sample: {:?}", millivolts);
+
+    info!("Starting main loop");
 
     let halt = Directive::Halt { uuid: "GLOBAL" };
-    let data = [7_u8; 2 * 8 * 48];
+    let mut packet = AudioPacket::new();
 
     let mut timer = cp.SYST.counter_us(&clocks);
     let mut time: i64 = 0;
     let mut ui_accum = 0;
     let mut send_accum = 0;
     let mut poll_accum = 0;
+    let mut adc_accum = 0;
     timer.start(1.millis()).unwrap();
 
     loop {
@@ -159,7 +175,7 @@ fn main() -> ! {
 
         let send_start = timer.now().ticks();
         if network.can_send() {
-            if let Err(e) = network.send_jack_data(&data) {
+            if let Err(e) = network.send_jack_data(&packet) {
                 info!("Data send error: {:?}", e);
             }
         }
@@ -178,16 +194,28 @@ fn main() -> ! {
         }
         poll_accum += timer.now().ticks() - poll_start;
 
+        let adc_start = timer.now().ticks();
+        sample = adc.convert(&pa0, SampleTime::Cycles_84);
+        for frame in &mut packet.data {
+            for v in &mut frame.data {
+                *v = sample as i16;
+            }
+        }
+        adc_accum += timer.now().ticks() - adc_start;
+
         if time % 1000 == 0 {
             info!(
-                "Average times (us): ui {}, send {}, poll {}",
+                "Average times (us): ui {}, send {}, poll {}, adc {}",
                 ui_accum / 1000,
                 send_accum / 1000,
-                poll_accum / 1000
+                poll_accum / 1000,
+                adc_accum / 1000
             );
+            info!("ADC current sample: {:?}", adc.sample_to_millivolts(sample));
             ui_accum = 0;
             send_accum = 0;
             poll_accum = 0;
+            adc_accum = 0;
         }
     }
 }
