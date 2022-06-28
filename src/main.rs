@@ -5,14 +5,14 @@ use panic_semihosting as _;
 // use panic_itm as _;
 
 use cortex_m_rt::entry;
-use stm32_eth::{
-    hal::adc::Adc,
-    hal::adc::config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
-    hal::gpio::GpioExt,
-    hal::prelude::*,
-    hal::rcc::RccExt,
-    hal::serial::Tx,
-    stm32::{interrupt, CorePeripherals, Peripherals, USART3},
+use apiary::hal::{
+    adc::Adc,
+    adc::config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
+    gpio::GpioExt,
+    prelude::*,
+    rcc::RccExt,
+    serial::Tx,
+    pac::{interrupt, CorePeripherals, Peripherals, USART3},
 };
 
 use core::cell::RefCell;
@@ -23,6 +23,8 @@ use core::fmt::Write;
 use fugit::RateExtU32;
 
 use stm32_eth::{EthPins, RingEntry};
+
+use heapless::String;
 
 #[macro_use]
 extern crate log;
@@ -86,7 +88,7 @@ fn main() -> ! {
     let tx_pin = gpiod.pd8.into_alternate();
 
     let mut tx = p.USART3.tx(tx_pin, 115_200_u32.bps(), &clocks).unwrap();
-    writeln!(tx, "\n\n").unwrap();
+    writeln!(tx, "\n\n ☢️📶📼 v0.1.0\n\n").unwrap();
     cortex_m::interrupt::free(|cs| *LOGGER.tx.borrow(cs).borrow_mut() = Some(tx));
     log::set_logger(&LOGGER)
         .map(|()| log::set_max_level(LevelFilter::Info))
@@ -147,7 +149,7 @@ fn main() -> ! {
 
     info!("Starting main loop");
 
-    let halt = Directive::Halt { uuid: "GLOBAL" };
+    let halt = Directive::Halt { uuid: String::from("GLOBAL") };
     let mut packet = AudioPacket::new();
 
     let mut timer = cp.SYST.counter_us(&clocks);
@@ -163,36 +165,47 @@ fn main() -> ! {
         time += 1;
 
         let ui_start = timer.now().ticks();
-        if ui.poll() {
-            if network.can_send() {
-                info!("=> HALT");
-                if let Err(e) = network.send(&halt) {
-                    info!("UDP send error: {:?}", e);
-                }
+        if ui.poll() && network.can_send() {
+            info!("=> HALT");
+            if let Err(e) = network.send(&halt) {
+                info!("UDP send error: {:?}", e);
             }
         }
         ui_accum += timer.now().ticks() - ui_start;
 
-        let send_start = timer.now().ticks();
-        if network.can_send() {
-            if let Err(e) = network.send_jack_data(&packet) {
-                info!("Data send error: {:?}", e);
-            }
-        }
-        send_accum += timer.now().ticks() - send_start;
-
         let poll_start = timer.now().ticks();
-        match network.poll(time) {
-            Ok(Some(directive)) => {
-                info!("Got directive: {:?}", directive);
+        let result = network.poll(time);
+        match result {
+            Ok(Some(Directive::Halt { uuid })) => {
+                info!("Got HALT directive: {:?}", uuid);
+            }
+            Ok(Some(Directive::SetInputJack { uuid: _, source, connection: _ })) => {
+                network.jack_connect(&source.addr, source.port, time).unwrap();
             }
             Ok(None) => {}
             Err(e) => {
                 // Ignore malformed packets
                 info!("Error: {:?}", e);
             }
+            _ => {}
         }
         poll_accum += timer.now().ticks() - poll_start;
+
+        let send_start = timer.now().ticks();
+        if network.can_send() {
+            match network.jack_poll() {
+                Ok(Some(d)) => {
+                    if let Err(e) = network.send_jack_data(&d) {
+                        info!("Data send error: {:?}", e);
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    info!("Data recv error: {:?}", e);
+                }
+            }
+        }
+        send_accum += timer.now().ticks() - send_start;
 
         let adc_start = timer.now().ticks();
         sample = adc.convert(&pa0, SampleTime::Cycles_84);
@@ -204,6 +217,7 @@ fn main() -> ! {
         adc_accum += timer.now().ticks() - adc_start;
 
         if time % 1000 == 0 {
+            /*
             info!(
                 "Average times (us): ui {}, send {}, poll {}, adc {}",
                 ui_accum / 1000,
@@ -212,6 +226,7 @@ fn main() -> ! {
                 adc_accum / 1000
             );
             info!("ADC current sample: {:?}", adc.sample_to_millivolts(sample));
+            */
             ui_accum = 0;
             send_accum = 0;
             poll_accum = 0;
