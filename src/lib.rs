@@ -11,15 +11,17 @@ pub mod ui;
 
 use core::str::FromStr;
 
-use smoltcp::iface::{
-    Interface, InterfaceBuilder, Neighbor, NeighborCache, Route, Routes, SocketHandle,
-    SocketStorage,
+use smoltcp::{
+    iface::{
+        Interface, InterfaceBuilder, Neighbor, NeighborCache, Route, Routes, SocketHandle,
+        SocketStorage,
+    },
+    phy::Device,
+    socket::{Dhcpv4Event, Dhcpv4Socket, UdpPacketMetadata, UdpSocket, UdpSocketBuffer},
+    time::Instant,
+    wire::{EthernetAddress, IpAddress, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr},
+    Error,
 };
-use smoltcp::phy::Device;
-use smoltcp::socket::{Dhcpv4Event, Dhcpv4Socket, UdpPacketMetadata, UdpSocket, UdpSocketBuffer};
-use smoltcp::time::Instant;
-use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr};
-use smoltcp::Error;
 use zerocopy::{AsBytes, FromBytes};
 
 use crate::protocol::Directive;

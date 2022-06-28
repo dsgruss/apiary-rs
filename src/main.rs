@@ -5,26 +5,25 @@ use panic_semihosting as _;
 // use panic_itm as _;
 
 use apiary::hal::{
-    adc::config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
-    adc::Adc,
+    adc::{
+        config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
+        Adc,
+    },
     gpio::GpioExt,
     pac::{interrupt, CorePeripherals, Peripherals, USART3},
     prelude::*,
     rcc::RccExt,
     serial::Tx,
 };
+use cortex_m::interrupt::Mutex;
 use cortex_m_rt::entry;
 
 use core::cell::RefCell;
-use cortex_m::interrupt::Mutex;
-
 use core::fmt::Write;
-
 use fugit::RateExtU32;
+use heapless::String;
 
 use stm32_eth::{EthPins, RingEntry};
-
-use heapless::String;
 
 #[macro_use]
 extern crate log;
@@ -65,7 +64,9 @@ impl log::Log for SerialLogger {
 static LOGGER: SerialLogger = SerialLogger::new();
 
 use apiary::{
-    protocol::Directive, ui::Ui, ui::UiPins, AudioPacket, NetworkInterface, NetworkInterfaceStorage,
+    protocol::Directive,
+    ui::{Ui, UiPins},
+    AudioPacket, NetworkInterface, NetworkInterfaceStorage,
 };
 
 #[entry]
