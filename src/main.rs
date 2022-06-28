@@ -4,16 +4,16 @@
 use panic_semihosting as _;
 // use panic_itm as _;
 
-use cortex_m_rt::entry;
 use apiary::hal::{
-    adc::Adc,
     adc::config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
+    adc::Adc,
     gpio::GpioExt,
+    pac::{interrupt, CorePeripherals, Peripherals, USART3},
     prelude::*,
     rcc::RccExt,
     serial::Tx,
-    pac::{interrupt, CorePeripherals, Peripherals, USART3},
 };
+use cortex_m_rt::entry;
 
 use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
@@ -64,7 +64,9 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger::new();
 
-use apiary::{protocol::Directive, ui::Ui, ui::UiPins, NetworkInterface, NetworkInterfaceStorage, AudioPacket};
+use apiary::{
+    protocol::Directive, ui::Ui, ui::UiPins, AudioPacket, NetworkInterface, NetworkInterfaceStorage,
+};
 
 #[entry]
 fn main() -> ! {
@@ -135,7 +137,7 @@ fn main() -> ! {
     let mut network = NetworkInterface::new(&mut eth_dma, &mut storage);
 
     info!("Sockets created");
-    
+
     let adc_config = AdcConfig::default()
         .clock(Clock::Pclk2_div_8)
         .scan(Scan::Enabled)
@@ -149,7 +151,9 @@ fn main() -> ! {
 
     info!("Starting main loop");
 
-    let halt = Directive::Halt { uuid: String::from("GLOBAL") };
+    let halt = Directive::Halt {
+        uuid: String::from("GLOBAL"),
+    };
     let mut packet = AudioPacket::new();
 
     let mut timer = cp.SYST.counter_us(&clocks);
@@ -179,8 +183,14 @@ fn main() -> ! {
             Ok(Some(Directive::Halt { uuid })) => {
                 info!("Got HALT directive: {:?}", uuid);
             }
-            Ok(Some(Directive::SetInputJack { uuid: _, source, connection: _ })) => {
-                network.jack_connect(&source.addr, source.port, time).unwrap();
+            Ok(Some(Directive::SetInputJack {
+                uuid: _,
+                source,
+                connection: _,
+            })) => {
+                network
+                    .jack_connect(&source.addr, source.port, time)
+                    .unwrap();
             }
             Ok(None) => {}
             Err(e) => {

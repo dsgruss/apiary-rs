@@ -202,11 +202,13 @@ where
             Ok(address) => {
                 let ep = IpEndpoint::new(IpAddress::Ipv4(address), port);
                 if let Some(old_ep) = self.input_jack_endpoint {
-                    self.iface.leave_multicast_group(old_ep.addr, Instant::from_millis(time))?;
+                    self.iface
+                        .leave_multicast_group(old_ep.addr, Instant::from_millis(time))?;
                     info!("Input jack 0: Leaving group");
                 }
                 info!("Input jack 0: Joining group and opening socket");
-                self.iface.join_multicast_group(ep.addr, Instant::from_millis(time))?;
+                self.iface
+                    .join_multicast_group(ep.addr, Instant::from_millis(time))?;
                 self.input_jack_endpoint = Some(ep);
                 let jack_socket = self.iface.get_socket::<UdpSocket>(self.input_jack_handle);
                 if jack_socket.is_open() {
@@ -277,10 +279,7 @@ where
                     }
                 }
 
-                for ep in [
-                    self.broadcast_endpoint,
-                    self.output_jack_endpoint,
-                ] {
+                for ep in [self.broadcast_endpoint, self.output_jack_endpoint] {
                     match self
                         .iface
                         .join_multicast_group(ep.addr, Instant::from_millis(time))
