@@ -18,10 +18,10 @@ pub enum Roles {
     LEADER,
 }
 
-pub struct LeaderElection<'a> {
+pub struct LeaderElection<'a, T: RngCore> {
     id: Uuid,
     seen_hosts: FnvIndexSet<Uuid, MAX_HOSTS>,
-    rand_source: &'a mut RngCore,
+    rand_source: &'a mut T,
     local_state: LocalState,
     election_timeout: i64,
     heartbeat_timeout: i64,
@@ -32,8 +32,8 @@ pub struct LeaderElection<'a> {
     iteration: u32,
 }
 
-impl<'a> LeaderElection<'a> {
-    pub fn new(id: Uuid, time: i64, rand_source: &'a mut RngCore) -> Self {
+impl<'a, T: RngCore> LeaderElection<'a, T> {
+    pub fn new(id: Uuid, time: i64, rand_source: &'a mut T) -> Self {
         let seen_hosts = FnvIndexSet::<_, MAX_HOSTS>::new();
 
         let election_timeout = (rand_source.next_u32() as i64)
