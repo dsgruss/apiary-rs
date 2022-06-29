@@ -8,7 +8,7 @@ use rand_core::RngCore;
 
 const ELECTION_TIMEOUT_INTERVAL: (i64, i64) = (150, 300); // ms
 const HEARTBEAT_INTERVAL: i64 = 50; // ms
-// const RESPONSE_TIMEOUT: i64 = 50; // ms
+                                    // const RESPONSE_TIMEOUT: i64 = 50; // ms
 const MAX_HOSTS: usize = 16;
 
 #[derive(PartialEq, Debug)]
@@ -100,7 +100,10 @@ impl<'a> LeaderElection<'a> {
                         self.voted_for = Some(uuid.clone());
                     }
                     self.reset_election_timer(time);
-                    info!("{}: Heartbeat from {}, election timer now at {}", time, uuid, self.election_timeout);
+                    info!(
+                        "{}: Heartbeat from {}, election timer now at {}",
+                        time, uuid, self.election_timeout
+                    );
                     self.heartbeat_response_success(self.current_term, iteration)
                 }
             }
