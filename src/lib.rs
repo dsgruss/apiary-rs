@@ -175,6 +175,7 @@ where
                     }
                     if socket.can_recv() {
                         let (buf, _) = socket.recv()?;
+                        // info!("Got packet: {:?}", core::str::from_utf8(buf).unwrap());
                         match serde_json_core::from_slice(buf) {
                             Ok((out, _)) => return Ok(out),
                             Err(_) => return Err(Error::Dropped),

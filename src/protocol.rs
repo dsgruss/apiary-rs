@@ -13,13 +13,13 @@ pub enum PatchState {
     Blocked,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct HeldInputJack {
     uuid: Uuid,
     id: JackId,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct HeldOutputJack {
     uuid: Uuid,
     id: JackId,
@@ -28,13 +28,13 @@ pub struct HeldOutputJack {
     pub port: u16,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct LocalState {
     held_inputs: Vec<HeldInputJack, JW>,
     held_outputs: Vec<HeldOutputJack, JW>,
     // Not sure why this fails with a lifetime error without the following line, but otherwise
     // everything parses correctly...
-    // make_compile: Option<&'a str>,
+    // make_compile: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

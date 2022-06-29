@@ -3,6 +3,7 @@
 
 use panic_semihosting as _;
 // use panic_itm as _;
+// use panic_halt as _;
 
 use apiary::hal::{
     adc::{
@@ -20,6 +21,7 @@ use cortex_m_rt::entry;
 
 use core::cell::RefCell;
 use core::fmt::Write;
+use core::str::FromStr;
 use fugit::RateExtU32;
 use heapless::String;
 
@@ -64,7 +66,8 @@ impl log::Log for SerialLogger {
 static LOGGER: SerialLogger = SerialLogger::new();
 
 use apiary::{
-    protocol::Directive,
+    leader_election::LeaderElection,
+    protocol::{Directive, Uuid},
     ui::{Ui, UiPins},
     AudioPacket, NetworkInterface, NetworkInterfaceStorage,
 };
@@ -98,7 +101,9 @@ fn main() -> ! {
         .unwrap();
     info!("Serial debug active");
 
-    // let mut rand_source = p.RNG.constrain(&clocks);
+    let mut rand_source = p.RNG.constrain(&clocks);
+    let mut leader_election =
+        LeaderElection::new(Uuid::from_str("hardware").unwrap(), 0, &mut rand_source);
 
     let ui_pins = UiPins {
         sw_sig2: gpiod.pd12,
@@ -155,6 +160,7 @@ fn main() -> ! {
     let halt = Directive::Halt {
         uuid: String::from("GLOBAL"),
     };
+
     let mut packet = AudioPacket::new();
 
     let mut timer = cp.SYST.counter_us(&clocks);
@@ -193,12 +199,21 @@ fn main() -> ! {
                     .jack_connect(&source.addr, source.port, time)
                     .unwrap();
             }
-            Ok(None) => {}
+            Ok(dir) => {
+                if network.can_send() {
+                    if let Some(resp) = leader_election.poll(dir, time) {
+                        if let Err(e) = network.send(&resp) {
+                            info!("UDP send error: {:?}", e);
+                        }
+                    }
+                } else {
+                    leader_election.reset(time);
+                }
+            }
             Err(e) => {
                 // Ignore malformed packets
                 info!("Error: {:?}", e);
             }
-            _ => {}
         }
         poll_accum += timer.now().ticks() - poll_start;
 
@@ -228,7 +243,6 @@ fn main() -> ! {
         adc_accum += timer.now().ticks() - adc_start;
 
         if time % 1000 == 0 {
-            /*
             info!(
                 "Average times (us): ui {}, send {}, poll {}, adc {}",
                 ui_accum / 1000,
@@ -237,7 +251,8 @@ fn main() -> ! {
                 adc_accum / 1000
             );
             info!("ADC current sample: {:?}", adc.sample_to_millivolts(sample));
-            */
+            info!("Election status: {:?}", leader_election.role);
+
             ui_accum = 0;
             send_accum = 0;
             poll_accum = 0;
