@@ -47,50 +47,70 @@ pub struct PatchConnection {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct DirectiveSetInputJack {
+    pub uuid: Uuid,
+    pub source: HeldOutputJack,
+    pub connection: PatchConnection,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DirectiveSetOutputJack {
+    pub uuid: Uuid,
+    pub source: HeldInputJack,
+    pub connection: PatchConnection,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DirectiveHalt {
+    pub uuid: Uuid,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DirectiveHeartbeat {
+    pub uuid: Uuid,
+    pub term: u32,
+    pub iteration: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DirectiveHeartbeatResponse {
+    pub uuid: Uuid,
+    pub term: u32,
+    pub success: bool,
+    pub iteration: Option<u32>,
+    pub state: Option<LocalState>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DirectiveRequestVote {
+    pub uuid: Uuid,
+    pub term: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DirectiveRequestVoteResponse {
+    pub uuid: Uuid,
+    pub term: u32,
+    pub voted_for: Uuid,
+    pub vote_granted: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DirectiveGlobalStateUpdate {
+    pub uuid: Uuid,
+    pub patch_state: PatchState,
+    pub input: Option<HeldInputJack>,
+    pub output: Option<HeldOutputJack>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub enum Directive {
-    SetInputJack {
-        uuid: Uuid,
-        source: HeldOutputJack,
-        connection: PatchConnection,
-    },
-    SetOutputJack {
-        uuid: Uuid,
-        source: HeldInputJack,
-        connection: PatchConnection,
-    },
-    Update {
-        uuid: Uuid,
-        local_state: LocalState,
-    },
-    Halt {
-        uuid: Uuid,
-    },
-    Heartbeat {
-        uuid: Uuid,
-        term: u32,
-        iteration: u32,
-    },
-    HeartbeatResponse {
-        uuid: Uuid,
-        term: u32,
-        success: bool,
-        iteration: Option<u32>,
-        state: Option<LocalState>,
-    },
-    RequestVote {
-        uuid: Uuid,
-        term: u32,
-    },
-    RequestVoteResponse {
-        uuid: Uuid,
-        term: u32,
-        voted_for: Uuid,
-        vote_granted: bool,
-    },
-    GlobalStateUpdate {
-        uuid: Uuid,
-        patch_state: PatchState,
-        input: Option<HeldInputJack>,
-        output: Option<HeldOutputJack>,
-    }
+    SetInputJack(DirectiveSetInputJack),
+    SetOutputJack(DirectiveSetOutputJack),
+    Halt(DirectiveHalt),
+    Heartbeat(DirectiveHeartbeat),
+    HeartbeatResponse(DirectiveHeartbeatResponse),
+    RequestVote(DirectiveRequestVote),
+    RequestVoteResponse(DirectiveRequestVoteResponse),
+    GlobalStateUpdate(DirectiveGlobalStateUpdate),
 }

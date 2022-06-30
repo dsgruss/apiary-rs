@@ -1,7 +1,7 @@
 use crate::protocol::{
     Directive,
     Directive::{Heartbeat, HeartbeatResponse, RequestVote, RequestVoteResponse},
-    LocalState, Uuid,
+    LocalState, Uuid, DirectiveRequestVote, DirectiveHeartbeat, DirectiveHeartbeatResponse, DirectiveRequestVoteResponse,
 };
 use heapless::FnvIndexSet;
 use rand_core::RngCore;
@@ -83,21 +83,17 @@ impl<'a, T: RngCore> LeaderElection<'a, T> {
 
     pub fn poll(&mut self, message: Option<Directive>, time: i64) -> Option<Directive> {
         match message {
-            Some(Heartbeat {
-                uuid,
-                term,
-                iteration,
-            }) => {
-                self.seen_hosts.insert(uuid.clone()).unwrap();
-                if self.id == uuid {
+            Some(Heartbeat(hb)) => {
+                self.seen_hosts.insert(hb.uuid.clone()).unwrap();
+                if self.id == hb.uuid {
                     None
-                } else if term < self.current_term {
+                } else if hb.term < self.current_term {
                     self.heartbeat_response_fail(self.current_term)
                 } else {
-                    if term > self.current_term || self.role == Roles::CANDIDATE {
-                        self.current_term = term;
+                    if hb.term > self.current_term || self.role == Roles::CANDIDATE {
+                        self.current_term = hb.term;
                         self.role = Roles::FOLLOWER;
-                        self.voted_for = Some(uuid.clone());
+                        self.voted_for = Some(hb.uuid.clone());
                     }
                     self.reset_election_timer(time);
                     /*
@@ -106,25 +102,25 @@ impl<'a, T: RngCore> LeaderElection<'a, T> {
                         time, uuid, self.election_timeout
                     );
                     */
-                    self.heartbeat_response_success(self.current_term, iteration)
+                    self.heartbeat_response_success(self.current_term, hb.iteration)
                 }
             }
-            Some(RequestVote { uuid, term }) => {
-                self.seen_hosts.insert(uuid.clone()).unwrap();
-                if self.id == uuid {
+            Some(RequestVote(rv)) => {
+                self.seen_hosts.insert(rv.uuid.clone()).unwrap();
+                if self.id == rv.uuid {
                     None
-                } else if term < self.current_term {
-                    self.vote_response(self.current_term, uuid, false)
+                } else if rv.term < self.current_term {
+                    self.vote_response(self.current_term, rv.uuid, false)
                 } else {
-                    if term > self.current_term {
-                        self.current_term = term;
+                    if rv.term > self.current_term {
+                        self.current_term = rv.term;
                         self.role = Roles::FOLLOWER;
-                        self.voted_for = Some(uuid.clone());
+                        self.voted_for = Some(rv.uuid.clone());
                     }
                     match &self.voted_for {
-                        None => self.vote_response(term, uuid, true),
-                        Some(i) if *i == uuid => self.vote_response(term, uuid, true),
-                        _ => self.vote_response(term, uuid, false),
+                        None => self.vote_response(rv.term, rv.uuid, true),
+                        Some(i) if *i == rv.uuid => self.vote_response(rv.term, rv.uuid, true),
+                        _ => self.vote_response(rv.term, rv.uuid, false),
                     }
                 }
             }
@@ -139,24 +135,19 @@ impl<'a, T: RngCore> LeaderElection<'a, T> {
                         self.votes_got = 1;
                         self.reset_election_timer(time);
                         self.reset_heartbeat_timer(time);
-                        Some(RequestVote {
+                        Some(RequestVote(DirectiveRequestVote {
                             uuid: self.id.clone(),
                             term: self.current_term,
-                        })
+                        }))
                     } else {
                         None
                     }
                 }
                 Roles::CANDIDATE => {
-                    if let Some(RequestVoteResponse {
-                        uuid: _,
-                        term,
-                        voted_for,
-                        vote_granted,
-                    }) = resp
+                    if let Some(RequestVoteResponse(rvr)) = resp
                     {
-                        if term == self.current_term && voted_for == self.id {
-                            if vote_granted {
+                        if rvr.term == self.current_term && rvr.voted_for == self.id {
+                            if rvr.vote_granted {
                                 self.votes_got += 1;
                             } else {
                                 self.role = Roles::FOLLOWER;
@@ -177,11 +168,11 @@ impl<'a, T: RngCore> LeaderElection<'a, T> {
                     if self.heartbeat_timer_elapsed(time) {
                         self.reset_heartbeat_timer(time);
                         self.iteration += 1;
-                        Some(Heartbeat {
+                        Some(Heartbeat(DirectiveHeartbeat {
                             uuid: self.id.clone(),
                             term: self.current_term,
                             iteration: self.iteration,
-                        })
+                        }))
                     } else {
                         None
                     }
@@ -191,32 +182,32 @@ impl<'a, T: RngCore> LeaderElection<'a, T> {
     }
 
     fn heartbeat_response_fail(&self, term: u32) -> Option<Directive> {
-        Some(HeartbeatResponse {
+        Some(HeartbeatResponse(DirectiveHeartbeatResponse {
             uuid: self.id.clone(),
             term,
             success: false,
             iteration: None,
             state: None,
-        })
+        }))
     }
 
     fn heartbeat_response_success(&self, term: u32, iteration: u32) -> Option<Directive> {
-        Some(HeartbeatResponse {
+        Some(HeartbeatResponse(DirectiveHeartbeatResponse {
             uuid: self.id.clone(),
             term,
             success: true,
             iteration: Some(iteration),
             state: Some(self.local_state.clone()),
-        })
+        }))
     }
 
     fn vote_response(&self, term: u32, voted_for: Uuid, vote_granted: bool) -> Option<Directive> {
-        Some(RequestVoteResponse {
+        Some(RequestVoteResponse(DirectiveRequestVoteResponse {
             uuid: self.id.clone(),
             term,
             voted_for,
             vote_granted,
-        })
+        }))
     }
 
     pub fn update_local_state(&mut self, local_state: LocalState) {

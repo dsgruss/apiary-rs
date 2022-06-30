@@ -196,16 +196,12 @@ fn main() -> ! {
         let poll_start = timer.now().ticks();
         let result = network.poll(time);
         match result {
-            Ok(Some(Directive::Halt { uuid })) => {
-                info!("Got HALT directive: {:?}", uuid);
+            Ok(Some(Directive::Halt(directive))) => {
+                info!("Got HALT directive: {:?}", directive.uuid);
             }
-            Ok(Some(Directive::SetInputJack {
-                uuid: _,
-                source,
-                connection: _,
-            })) => {
+            Ok(Some(Directive::SetInputJack(directive))) => {
                 network
-                    .jack_connect(&source.addr, source.port, time)
+                    .jack_connect(&directive.source.addr, directive.source.port, time)
                     .unwrap();
             }
             Ok(dir) => {
@@ -218,6 +214,7 @@ fn main() -> ! {
                 } else {
                     leader_election.reset(time);
                 }
+
             }
             Err(e) => {
                 // Ignore malformed packets
