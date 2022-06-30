@@ -1,7 +1,8 @@
 use crate::protocol::{
     Directive,
     Directive::{Heartbeat, HeartbeatResponse, RequestVote, RequestVoteResponse},
-    LocalState, Uuid, DirectiveRequestVote, DirectiveHeartbeat, DirectiveHeartbeatResponse, DirectiveRequestVoteResponse,
+    DirectiveHeartbeat, DirectiveHeartbeatResponse, DirectiveRequestVote,
+    DirectiveRequestVoteResponse, LocalState, Uuid,
 };
 use heapless::FnvIndexSet;
 use rand_core::RngCore;
@@ -144,8 +145,7 @@ impl<'a, T: RngCore> LeaderElection<'a, T> {
                     }
                 }
                 Roles::CANDIDATE => {
-                    if let Some(RequestVoteResponse(rvr)) = resp
-                    {
+                    if let Some(RequestVoteResponse(rvr)) = resp {
                         if rvr.term == self.current_term && rvr.voted_for == self.id {
                             if rvr.vote_granted {
                                 self.votes_got += 1;
