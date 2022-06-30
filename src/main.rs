@@ -71,7 +71,7 @@ use apiary::{
     leader_election::LeaderElection,
     protocol::{Directive, LocalState, Uuid},
     ui::{Ui, UiPins},
-    AudioPacket, NetworkInterface, NetworkInterfaceStorage,
+    AudioPacket, NetworkInterface,
 };
 
 #[entry]
@@ -142,7 +142,7 @@ fn main() -> ! {
 
     eth_dma.enable_interrupt();
 
-    let mut storage = NetworkInterfaceStorage::new();
+    let mut storage = Default::default();
     let mut network = NetworkInterface::new(&mut eth_dma, &mut storage);
 
     info!("Sockets created");
@@ -160,7 +160,7 @@ fn main() -> ! {
 
     info!("Starting main loop");
 
-    let mut packet = AudioPacket::new();
+    let mut packet: AudioPacket = Default::default();
 
     let mut timer = cp.SYST.counter_us(&clocks);
     let mut time: i64 = 0;

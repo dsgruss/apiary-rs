@@ -35,7 +35,7 @@ const OUTPUT_JACK_EP: &str = "239.1.2.3:19991";
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xca, 0x55, 0xe7, 0x7e];
 
-#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Default, Debug)]
 #[repr(C)]
 pub struct AudioFrame {
     pub data: [SampleType; CHANNELS],
@@ -47,12 +47,10 @@ pub struct AudioPacket {
     pub data: [AudioFrame; BLOCK_SIZE],
 }
 
-impl AudioPacket {
-    pub fn new() -> Self {
+impl Default for AudioPacket {
+    fn default() -> Self {
         AudioPacket {
-            data: [AudioFrame {
-                data: [0; CHANNELS],
-            }; BLOCK_SIZE],
+            data: [Default::default(); BLOCK_SIZE],
         }
     }
 }
@@ -73,8 +71,8 @@ pub struct NetworkInterfaceStorage<'a> {
     jack_tx_payload_buffers: [[u8; 2048]; 1],
 }
 
-impl NetworkInterfaceStorage<'_> {
-    pub fn new() -> Self {
+impl Default for NetworkInterfaceStorage<'_> {
+    fn default() -> Self {
         NetworkInterfaceStorage {
             ip_addrs: [IpCidr::new(Ipv4Address::UNSPECIFIED.into(), 0)],
             neighbor_storage: [None; 16],
