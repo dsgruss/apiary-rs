@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 const SW: usize = 48;
 const JW: usize = 15;
 pub type Uuid = String<SW>;
-type JackId = String<SW>;
+type JackId = u32;
 
+#[derive(Serialize, Deserialize, Debug)]
 pub enum PatchState {
     Idle,
     PatchEnabled,
@@ -15,23 +16,23 @@ pub enum PatchState {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct HeldInputJack {
-    uuid: Uuid,
-    id: JackId,
+    pub uuid: Uuid,
+    pub id: JackId,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct HeldOutputJack {
-    uuid: Uuid,
-    id: JackId,
-    color: u32,
+    pub uuid: Uuid,
+    pub id: JackId,
+    pub color: u32,
     pub addr: String<SW>,
     pub port: u16,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct LocalState {
-    held_inputs: Vec<HeldInputJack, JW>,
-    held_outputs: Vec<HeldOutputJack, JW>,
+    pub held_inputs: Vec<HeldInputJack, JW>,
+    pub held_outputs: Vec<HeldOutputJack, JW>,
     // Not sure why this fails with a lifetime error without the following line, but otherwise
     // everything parses correctly...
     // make_compile: Option<bool>,
@@ -86,4 +87,10 @@ pub enum Directive {
         voted_for: Uuid,
         vote_granted: bool,
     },
+    GlobalStateUpdate {
+        uuid: Uuid,
+        patch_state: PatchState,
+        input: Option<HeldInputJack>,
+        output: Option<HeldOutputJack>,
+    }
 }

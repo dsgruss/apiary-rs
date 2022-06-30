@@ -6,7 +6,7 @@ use crate::protocol::{
 use heapless::FnvIndexSet;
 use rand_core::RngCore;
 
-const ELECTION_TIMEOUT_INTERVAL: (i64, i64) = (150, 300); // ms
+const ELECTION_TIMEOUT_INTERVAL: (i64, i64) = (15000, 30000); // ms
 const HEARTBEAT_INTERVAL: i64 = 50; // ms
                                     // const RESPONSE_TIMEOUT: i64 = 50; // ms
 const MAX_HOSTS: usize = 16;
@@ -25,11 +25,11 @@ pub struct LeaderElection<'a, T: RngCore> {
     local_state: LocalState,
     election_timeout: i64,
     heartbeat_timeout: i64,
-    current_term: u32,
-    voted_for: Option<Uuid>,
+    pub current_term: u32,
+    pub voted_for: Option<Uuid>,
     pub role: Roles,
     votes_got: u32,
-    iteration: u32,
+    pub iteration: u32,
 }
 
 impl<'a, T: RngCore> LeaderElection<'a, T> {
@@ -100,10 +100,12 @@ impl<'a, T: RngCore> LeaderElection<'a, T> {
                         self.voted_for = Some(uuid.clone());
                     }
                     self.reset_election_timer(time);
+                    /*
                     info!(
                         "{}: Heartbeat from {}, election timer now at {}",
                         time, uuid, self.election_timeout
                     );
+                    */
                     self.heartbeat_response_success(self.current_term, iteration)
                 }
             }
@@ -117,7 +119,7 @@ impl<'a, T: RngCore> LeaderElection<'a, T> {
                     if term > self.current_term {
                         self.current_term = term;
                         self.role = Roles::FOLLOWER;
-                        self.voted_for = None;
+                        self.voted_for = Some(uuid.clone());
                     }
                     match &self.voted_for {
                         None => self.vote_response(term, uuid, true),
@@ -215,5 +217,9 @@ impl<'a, T: RngCore> LeaderElection<'a, T> {
             voted_for,
             vote_granted,
         })
+    }
+
+    pub fn update_local_state(&mut self, local_state: LocalState) {
+        self.local_state = local_state;
     }
 }

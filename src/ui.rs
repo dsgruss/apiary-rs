@@ -78,7 +78,7 @@ impl Ui {
         }
     }
 
-    pub fn poll(&mut self) -> bool {
+    pub fn poll(&mut self) -> (bool, bool) {
         self.sw_sig2.debounce();
         self.sw_sig4.debounce();
         if self.sw_sig2.just_pressed() {
@@ -95,6 +95,6 @@ impl Ui {
         if self.sw_sig4.released() {
             info!("SW4 switch released");
         }
-        self.sw_sig2.just_pressed()
+        (self.sw_sig2.pressed(), self.sw_sig4.pressed())
     }
 }

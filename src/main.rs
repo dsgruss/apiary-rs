@@ -5,7 +5,7 @@ use panic_semihosting as _;
 // use panic_itm as _;
 // use panic_halt as _;
 
-use apiary::hal::{
+use apiary::{hal::{
     adc::{
         config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
         Adc,
@@ -15,13 +15,12 @@ use apiary::hal::{
     prelude::*,
     rcc::RccExt,
     serial::Tx,
-};
+}, protocol::{HeldInputJack, HeldOutputJack}};
 use cortex_m::interrupt::Mutex;
 use cortex_m_rt::entry;
 
 use core::cell::RefCell;
 use core::fmt::Write;
-use core::str::FromStr;
 use fugit::RateExtU32;
 use heapless::String;
 
@@ -67,7 +66,7 @@ static LOGGER: SerialLogger = SerialLogger::new();
 
 use apiary::{
     leader_election::LeaderElection,
-    protocol::{Directive, Uuid},
+    protocol::{Directive, Uuid, LocalState},
     ui::{Ui, UiPins},
     AudioPacket, NetworkInterface, NetworkInterfaceStorage,
 };
@@ -101,9 +100,11 @@ fn main() -> ! {
         .unwrap();
     info!("Serial debug active");
 
+    let uuid = Uuid::from("hardware");
+    let addr = String::from("239.1.2.3");
     let mut rand_source = p.RNG.constrain(&clocks);
     let mut leader_election =
-        LeaderElection::new(Uuid::from_str("hardware").unwrap(), 0, &mut rand_source);
+        LeaderElection::new(uuid.clone(), 0, &mut rand_source);
 
     let ui_pins = UiPins {
         sw_sig2: gpiod.pd12,
@@ -157,10 +158,6 @@ fn main() -> ! {
 
     info!("Starting main loop");
 
-    let halt = Directive::Halt {
-        uuid: String::from("GLOBAL"),
-    };
-
     let mut packet = AudioPacket::new();
 
     let mut timer = cp.SYST.counter_us(&clocks);
@@ -176,12 +173,24 @@ fn main() -> ! {
         time += 1;
 
         let ui_start = timer.now().ticks();
-        if ui.poll() && network.can_send() {
-            info!("=> HALT");
-            if let Err(e) = network.send(&halt) {
-                info!("UDP send error: {:?}", e);
-            }
+        let (sw2, sw4) = ui.poll();
+        let mut local_state: LocalState = Default::default();
+        if sw2 {
+            local_state.held_inputs.push(HeldInputJack {
+                uuid: uuid.clone(),
+                id: 0
+            }).unwrap();
         }
+        if sw4 {
+            local_state.held_outputs.push(HeldOutputJack {
+                uuid: uuid.clone(),
+                id: 1,
+                color: 48,
+                addr: addr.clone(),
+                port: 19991,
+            }).unwrap();
+        }
+        leader_election.update_local_state(local_state);
         ui_accum += timer.now().ticks() - ui_start;
 
         let poll_start = timer.now().ticks();
@@ -251,7 +260,12 @@ fn main() -> ! {
                 adc_accum / 1000
             );
             info!("ADC current sample: {:?}", adc.sample_to_millivolts(sample));
-            info!("Election status: {:?}", leader_election.role);
+            info!("Election status: {:?}:{}:{}, leader is {:?}", 
+                leader_election.role,
+                leader_election.current_term,
+                leader_election.iteration,
+                leader_election.voted_for
+            );
 
             ui_accum = 0;
             send_accum = 0;
