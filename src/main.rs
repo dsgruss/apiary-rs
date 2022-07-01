@@ -17,7 +17,7 @@ use apiary::{
         rcc::RccExt,
         serial::Tx,
     },
-    protocol::{HeldInputJack, HeldOutputJack},
+    HeldInputJack, HeldOutputJack,
 };
 use cortex_m::interrupt::Mutex;
 use cortex_m_rt::entry;
@@ -69,9 +69,9 @@ static LOGGER: SerialLogger = SerialLogger::new();
 
 use apiary::{
     leader_election::LeaderElection,
-    protocol::{Directive, LocalState, Uuid},
+    smoltcp_socket::SmoltcpInterface,
     ui::{Ui, UiPins},
-    AudioPacket, NetworkInterface,
+    AudioPacket, Directive, Error, LocalState, Module, Uuid,
 };
 
 #[entry]
@@ -143,7 +143,7 @@ fn main() -> ! {
     eth_dma.enable_interrupt();
 
     let mut storage = Default::default();
-    let mut network = NetworkInterface::new(&mut eth_dma, &mut storage);
+    let mut module = Module::new(SmoltcpInterface::new(&mut eth_dma, &mut storage));
 
     info!("Sockets created");
 
@@ -202,21 +202,37 @@ fn main() -> ! {
         ui_accum += timer.now().ticks() - ui_start;
 
         let poll_start = timer.now().ticks();
-        let result = network.poll(time);
-        match result {
-            Ok(Some(Directive::Halt(directive))) => {
+        match module.poll(time) {
+            Ok(_) => {}
+            Err(e) => {
+                info!("Poll error: {:?}", e);
+            }
+        }
+        match module.recv_directive() {
+            Ok(Directive::Halt(directive)) => {
                 info!("Got HALT directive: {:?}", directive.uuid);
             }
-            Ok(Some(Directive::SetInputJack(directive))) => {
-                network
-                    .jack_connect(&directive.source.addr, directive.source.port, time)
+            Ok(Directive::SetInputJack(directive)) => {
+                module
+                    .jack_connect(0, &directive.source.addr, directive.source.port, time)
                     .unwrap();
             }
             Ok(dir) => {
-                if network.can_send() {
-                    if let Some(resp) = leader_election.poll(dir, time) {
-                        if let Err(e) = network.send(&resp) {
-                            info!("UDP send error: {:?}", e);
+                if module.can_send() {
+                    if let Some(resp) = leader_election.poll(Some(dir), time) {
+                        if let Err(e) = module.send_directive(&resp) {
+                            info!("Directive send error: {:?}", e);
+                        }
+                    }
+                } else {
+                    leader_election.reset(time);
+                }
+            }
+            Err(Error::NoData) => {
+                if module.can_send() {
+                    if let Some(resp) = leader_election.poll(None, time) {
+                        if let Err(e) = module.send_directive(&resp) {
+                            info!("Directive send error: {:?}", e);
                         }
                     }
                 } else {
@@ -231,14 +247,14 @@ fn main() -> ! {
         poll_accum += timer.now().ticks() - poll_start;
 
         let send_start = timer.now().ticks();
-        if network.can_send() {
-            match network.jack_poll() {
-                Ok(Some(d)) => {
-                    if let Err(e) = network.send_jack_data(&d) {
+        if module.can_send() {
+            match module.jack_recv(0) {
+                Ok(d) => {
+                    if let Err(e) = module.jack_send(0, &d) {
                         info!("Data send error: {:?}", e);
                     }
                 }
-                Ok(None) => {}
+                Err(Error::NoData) => {}
                 Err(e) => {
                     info!("Data recv error: {:?}", e);
                 }

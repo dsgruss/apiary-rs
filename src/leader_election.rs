@@ -1,4 +1,4 @@
-use crate::protocol::{
+use crate::{
     Directive,
     Directive::{Heartbeat, HeartbeatResponse, RequestVote, RequestVoteResponse},
     DirectiveHeartbeat, DirectiveHeartbeatResponse, DirectiveRequestVote,
