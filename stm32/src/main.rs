@@ -5,8 +5,7 @@ use panic_semihosting as _;
 // use panic_itm as _;
 // use panic_halt as _;
 
-use apiary::{
-    hal::{
+use stm32f4xx_hal::{
         adc::{
             config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
             Adc,
@@ -16,8 +15,6 @@ use apiary::{
         prelude::*,
         rcc::RccExt,
         serial::Tx,
-    },
-    HeldInputJack, HeldOutputJack,
 };
 use cortex_m::interrupt::Mutex;
 use cortex_m_rt::entry;
@@ -67,12 +64,14 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger::new();
 
-use apiary::{
+use apiary_core::{
     leader_election::LeaderElection,
     smoltcp_socket::SmoltcpInterface,
-    ui::{Ui, UiPins},
     AudioPacket, Directive, Error, LocalState, Module, Uuid,
+    HeldInputJack, HeldOutputJack,
 };
+
+use apiary::{Ui, UiPins};
 
 #[entry]
 fn main() -> ! {

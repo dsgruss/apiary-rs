@@ -3,11 +3,8 @@
 #[macro_use]
 extern crate log;
 
-pub use stm32f4xx_hal as hal;
-
 pub mod leader_election;
 pub mod smoltcp_socket;
-pub mod ui;
 
 use heapless::{String, Vec};
 use serde::{Deserialize, Serialize};
@@ -240,5 +237,14 @@ impl<T: Network> Module<T> {
 
     pub fn jack_send(&mut self, jack_id: u32, data: &AudioPacket) -> Result<(), Error> {
         self.interface.jack_send(jack_id, data.as_bytes())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {
+        let result = 2 + 2;
+        assert_eq!(result, 4);
     }
 }

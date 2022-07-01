@@ -17,22 +17,11 @@ stm32f4xx-hal = { version = "0.13", features = ["stm32f429"] }
 
 fugit = "0.3"
 log = "0.4.6"
-rand_core = "0.6"
-
-serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde-json-core = "0.4.0"
 
 heapless = { version = "0.7.0", features = ["serde"] }
-managed = { version = "0.8.0", default-features = false }
-zerocopy = "0.6.1"
 
-[dependencies.smoltcp]
-version = "0.8.1"
-default-features = false
-features = [
-    "medium-ethernet", "proto-ipv4", "socket-udp", "proto-igmp",
-    "socket-dhcpv4"
-]
+[dependencies.apiary-core]
+path = "../core"
 
 [dependencies.stm32-eth]
 git = "https://github.com/dsgruss/stm32-eth"

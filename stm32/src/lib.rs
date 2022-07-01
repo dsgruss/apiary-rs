@@ -1,5 +1,9 @@
-use stm32_eth::hal::gpio;
-use stm32_eth::hal::gpio::Output;
+#![no_std]
+
+#[macro_use]
+extern crate log;
+
+use stm32f4xx_hal::{gpio, gpio::Output};
 
 pub struct Switch<const P: char, const N: u8> {
     pin: gpio::Pin<P, N>,
