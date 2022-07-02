@@ -1,9 +1,9 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
-#[cfg(not(any(feature = "network-smoltcp", feature="network-native")))]
+#[cfg(not(any(feature = "network-smoltcp", feature = "network-native")))]
 compile_error!("You must enable at one network feature");
 
-#[cfg(all(feature = "network-smoltcp", feature="network-native"))]
+#[cfg(all(feature = "network-smoltcp", feature = "network-native"))]
 compile_error!("You must select at least one network feature");
 
 #[macro_use]

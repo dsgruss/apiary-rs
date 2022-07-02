@@ -5,19 +5,19 @@ use panic_semihosting as _;
 // use panic_itm as _;
 // use panic_halt as _;
 
-use stm32f4xx_hal::{
-        adc::{
-            config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
-            Adc,
-        },
-        gpio::GpioExt,
-        pac::{interrupt, CorePeripherals, Peripherals, USART3},
-        prelude::*,
-        rcc::RccExt,
-        serial::Tx,
-};
 use cortex_m::interrupt::Mutex;
 use cortex_m_rt::entry;
+use stm32f4xx_hal::{
+    adc::{
+        config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
+        Adc,
+    },
+    gpio::GpioExt,
+    pac::{interrupt, CorePeripherals, Peripherals, USART3},
+    prelude::*,
+    rcc::RccExt,
+    serial::Tx,
+};
 
 use core::cell::RefCell;
 use core::fmt::Write;
@@ -65,10 +65,8 @@ impl log::Log for SerialLogger {
 static LOGGER: SerialLogger = SerialLogger::new();
 
 use apiary_core::{
-    leader_election::LeaderElection,
-    socket_smoltcp::SmoltcpInterface,
-    AudioPacket, Directive, Error, LocalState, Module, Uuid,
-    HeldInputJack, HeldOutputJack,
+    leader_election::LeaderElection, socket_smoltcp::SmoltcpInterface, AudioPacket, Directive,
+    Error, HeldInputJack, HeldOutputJack, LocalState, Module, Uuid,
 };
 
 use apiary::{Ui, UiPins};

@@ -1,13 +1,19 @@
-use apiary_core::{socket_native::NativeInterface, Module, Directive, DirectiveHalt, Uuid};
+use apiary_core::{socket_native::NativeInterface, Directive, DirectiveHalt, Module, Uuid};
 use eframe::egui;
 use simple_logger::SimpleLogger;
-use std::{time::{Instant, Duration}, thread, str::FromStr};
+use std::{
+    str::FromStr,
+    thread,
+    time::{Duration, Instant},
+};
 
 fn main() {
     SimpleLogger::new().init().unwrap();
     let mut module = Module::new(NativeInterface::new());
     let start = Instant::now();
-    let out = Directive::Halt(DirectiveHalt { uuid: Uuid::from_str("GLOBAL").unwrap()} );
+    let out = Directive::Halt(DirectiveHalt {
+        uuid: Uuid::from_str("GLOBAL").unwrap(),
+    });
     let mut time = 0;
     loop {
         while time < start.elapsed().as_millis() {
