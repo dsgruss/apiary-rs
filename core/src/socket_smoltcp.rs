@@ -13,7 +13,6 @@ use smoltcp::{
 
 use crate::{Error, Network};
 
-const PATCH_EP: &str = "239.0.0.0:19874";
 const OUTPUT_JACK_EP: &str = "239.1.2.3:19991";
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xca, 0x55, 0xe7, 0x7e];
 
@@ -105,7 +104,7 @@ where
             ),
         );
         let server_handle = iface.add_socket(server_socket);
-        let broadcast_endpoint = IpEndpoint::from_str(PATCH_EP).unwrap();
+        let broadcast_endpoint = IpEndpoint::from_str(crate::PATCH_EP).unwrap();
         let input_jack_handle = iface.add_socket(input_jack_socket);
         let output_jack_endpoint = IpEndpoint::from_str(OUTPUT_JACK_EP).unwrap();
 

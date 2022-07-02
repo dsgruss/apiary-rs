@@ -22,6 +22,8 @@ heapless = { version = "0.7.0", features = ["serde"] }
 
 [dependencies.apiary-core]
 path = "../core"
+default-features = false
+features = ["network-smoltcp"]
 
 [dependencies.stm32-eth]
 git = "https://github.com/dsgruss/stm32-eth"

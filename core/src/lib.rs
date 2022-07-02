@@ -1,10 +1,21 @@
-#![no_std]
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+
+#[cfg(not(any(feature = "network-smoltcp", feature="network-native")))]
+compile_error!("You must enable at one network feature");
+
+#[cfg(all(feature = "network-smoltcp", feature="network-native"))]
+compile_error!("You must select at least one network feature");
 
 #[macro_use]
 extern crate log;
 
 pub mod leader_election;
-pub mod smoltcp_socket;
+
+#[cfg(feature = "network-native")]
+pub mod socket_native;
+
+#[cfg(feature = "network-smoltcp")]
+pub mod socket_smoltcp;
 
 use heapless::{String, Vec};
 use serde::{Deserialize, Serialize};
@@ -13,6 +24,8 @@ use zerocopy::{AsBytes, FromBytes};
 const CHANNELS: usize = 8;
 const BLOCK_SIZE: usize = 48;
 type SampleType = i16;
+
+const PATCH_EP: &str = "239.0.0.0:19874";
 
 const SW: usize = 48;
 const JW: usize = 15;

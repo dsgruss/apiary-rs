@@ -66,7 +66,7 @@ static LOGGER: SerialLogger = SerialLogger::new();
 
 use apiary_core::{
     leader_election::LeaderElection,
-    smoltcp_socket::SmoltcpInterface,
+    socket_smoltcp::SmoltcpInterface,
     AudioPacket, Directive, Error, LocalState, Module, Uuid,
     HeldInputJack, HeldOutputJack,
 };
