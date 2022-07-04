@@ -18,7 +18,7 @@ impl NativeInterface {
         for (name, ip) in ips {
             match ip {
                 V4(addr) => {
-                    info!("IP Address: {:?} {:?}", name, addr);
+                    info!("Found IP address: {:?} {:?}", name, addr);
                     if preferred_subnet.contains(&addr) {
                         local_addr = addr;
                     }

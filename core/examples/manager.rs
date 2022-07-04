@@ -17,6 +17,9 @@ extern crate log;
 fn main() {
     SimpleLogger::new().init().unwrap();
 
+    let grid_size = (4.0, 19.0);
+    let grid_pos = (0.0, 0.0);
+
     let (tx, rx) = channel();
 
     let mut module = Module::new(NativeInterface::new());
@@ -40,8 +43,11 @@ fn main() {
     });
 
     let mut options = eframe::NativeOptions::default();
-    options.initial_window_size = Some(Vec2::new((4 * 50 - 10) as f32, (19 * 50) as f32));
-    options.initial_window_pos = Some(Pos2::new(15 as f32, 10 as f32));
+    options.initial_window_size = Some(Vec2::new(grid_size.0 * 50.0 - 10.0, grid_size.1 * 50.0));
+    options.initial_window_pos = Some(Pos2::new(
+        grid_pos.0 * 50.0 + 15.0,
+        grid_pos.1 * 50.0 + 10.0,
+    ));
     options.resizable = false;
     eframe::run_native(
         "Global State Control",
