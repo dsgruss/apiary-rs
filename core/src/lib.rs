@@ -184,8 +184,7 @@ pub trait Network {
     // Output bytes on the directive multicast
     fn send_directive(&mut self, buf: &[u8]) -> Result<(), Error>;
     // Connect an input jack to an output endpoint
-    fn jack_connect(&mut self, jack_id: usize, addr: &str, time: i64)
-        -> Result<(), Error>;
+    fn jack_connect(&mut self, jack_id: usize, addr: &str, time: i64) -> Result<(), Error>;
     // Get audio data for a particular jack
     fn jack_recv(&mut self, jack_id: usize, buf: &mut [u8]) -> Result<usize, Error>;
     // Send audio data for a particular jack
@@ -242,12 +241,7 @@ impl<T: Network> Module<T> {
         }
     }
 
-    pub fn jack_connect(
-        &mut self,
-        jack_id: usize,
-        addr: &str,
-        time: i64,
-    ) -> Result<(), Error> {
+    pub fn jack_connect(&mut self, jack_id: usize, addr: &str, time: i64) -> Result<(), Error> {
         self.interface.jack_connect(jack_id, addr, time)
     }
 

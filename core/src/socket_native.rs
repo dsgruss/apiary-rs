@@ -7,7 +7,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
-use crate::{Error, Network, PATCH_EP, PREFERRED_SUBNET, JACK_PORT};
+use crate::{Error, Network, JACK_PORT, PATCH_EP, PREFERRED_SUBNET};
 
 impl From<local_ip_address::Error> for Error {
     fn from(_: local_ip_address::Error) -> Self {
@@ -92,7 +92,7 @@ impl NativeInterface {
                 239,
                 rng.gen_range(0..255),
                 rng.gen_range(0..255),
-                rng.gen_range(0..255)
+                rng.gen_range(0..255),
             );
             let ep = SocketAddrV4::new(addr, JACK_PORT);
             patch_socket.join_multicast_v4(&addr, &local_addr)?;
@@ -100,7 +100,14 @@ impl NativeInterface {
             output_eps.push(ep);
         }
 
-        Ok(NativeInterface { patch_socket, patch_ep, input_sockets, input_groups: vec![None; input_count], output_eps, local_addr })
+        Ok(NativeInterface {
+            patch_socket,
+            patch_ep,
+            input_sockets,
+            input_groups: vec![None; input_count],
+            output_eps,
+            local_addr,
+        })
     }
 }
 
@@ -126,12 +133,7 @@ impl Network for NativeInterface {
         }
     }
 
-    fn jack_connect(
-        &mut self,
-        jack_id: usize,
-        addr: &str,
-        _time: i64,
-    ) -> Result<(), Error> {
+    fn jack_connect(&mut self, jack_id: usize, addr: &str, _time: i64) -> Result<(), Error> {
         if jack_id > self.input_sockets.len() {
             return Err(Error::InvalidJackId);
         }
@@ -164,7 +166,10 @@ impl Network for NativeInterface {
         if jack_id > self.output_eps.len() {
             return Err(Error::InvalidJackId);
         }
-        match self.patch_socket.send_to(buf, &self.output_eps[jack_id].into()) {
+        match self
+            .patch_socket
+            .send_to(buf, &self.output_eps[jack_id].into())
+        {
             Ok(_) => Ok(()),
             Err(_) => Err(Error::Network),
         }

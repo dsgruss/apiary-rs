@@ -2,8 +2,9 @@ use apiary_core::{socket_native::NativeInterface, Module};
 use eframe::egui;
 use midir::{MidiInput, MidiInputConnection};
 use std::{
+    sync::mpsc::{channel, TryRecvError},
     thread,
-    time::{Duration, Instant}, sync::mpsc::{channel, TryRecvError},
+    time::{Duration, Instant},
 };
 
 use crate::common::DisplayModule;
@@ -64,7 +65,7 @@ impl MidiToCv {
             while time < start.elapsed().as_millis() {
                 match rx.try_recv() {
                     Ok(message) => info!("{:?}", message),
-                    Err(TryRecvError::Empty) => {},
+                    Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => break 'outer,
                 }
                 module.poll(start.elapsed().as_millis() as i64).unwrap();
