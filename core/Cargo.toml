@@ -2,6 +2,7 @@
 name = "apiary-core"
 version = "0.1.0"
 edition = "2021"
+autoexamples = false
 
 [dependencies]
 log = "0.4.6"
@@ -17,6 +18,7 @@ zerocopy = "0.6.1"
 # ipconfig = { version = "0.3.0", optional = true }
 local-ip-address = { version = "0.4.4", optional = true }
 ipnet = { version = "2.5.0", optional = true }
+socket2 = { version = "0.4.4", optional = true }
 
 [dependencies.smoltcp]
 version = "0.8.1"
@@ -31,7 +33,7 @@ optional = true
 std = []
 
 network-smoltcp = ["smoltcp"]
-network-native = ["std", "local-ip-address", "ipnet"]
+network-native = ["std", "local-ip-address", "ipnet", "socket2"]
 
 default = ["network-native"]
 
@@ -39,3 +41,7 @@ default = ["network-native"]
 # Examples use a gui for the physical interface
 eframe = "0.18.0"
 simple_logger = "2.1.0"
+midir = "0.8.0"
+
+[[example]]
+name = "manager"

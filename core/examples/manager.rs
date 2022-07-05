@@ -1,8 +1,5 @@
 use apiary_core::{socket_native::NativeInterface, Directive, DirectiveHalt, Module, Uuid};
-use eframe::{
-    egui,
-    emath::{Pos2, Vec2},
-};
+use eframe::egui::{self};
 use simple_logger::SimpleLogger;
 use std::{
     str::FromStr,
@@ -11,13 +8,19 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod common;
+use common::DisplayModule;
+
+mod midi_to_cv;
+use midi_to_cv::MidiToCv;
+
 #[macro_use]
 extern crate log;
 
 fn main() {
     SimpleLogger::new().init().unwrap();
 
-    let grid_size = (4.0, 19.0);
+    let grid_size = (36.0, 19.0);
     let grid_pos = (0.0, 0.0);
 
     let (tx, rx) = channel();
@@ -43,14 +46,11 @@ fn main() {
     });
 
     let mut options = eframe::NativeOptions::default();
-    options.initial_window_size = Some(Vec2::new(grid_size.0 * 50.0 - 10.0, grid_size.1 * 50.0));
-    options.initial_window_pos = Some(Pos2::new(
-        grid_pos.0 * 50.0 + 15.0,
-        grid_pos.1 * 50.0 + 10.0,
-    ));
+    options.initial_window_size = Some([grid_size.0 * 50.0 - 10.0, grid_size.1 * 50.0].into());
+    options.initial_window_pos = Some([grid_pos.0 * 50.0 + 15.0, grid_pos.1 * 50.0 + 10.0].into());
     options.resizable = false;
     eframe::run_native(
-        "Global State Control",
+        "Module Test Sandbox",
         options,
         Box::new(|_cc| Box::new(Manager::new(tx))),
     );
@@ -59,6 +59,8 @@ fn main() {
 struct Manager {
     status: String,
     tx: Sender<bool>,
+    windows: Vec<Box<dyn DisplayModule>>,
+    window_count: u32,
 }
 
 impl Manager {
@@ -66,13 +68,15 @@ impl Manager {
         Self {
             status: "Loading...".to_owned(),
             tx,
+            windows: vec![],
+            window_count: 0,
         }
     }
 }
 
 impl eframe::App for Manager {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::SidePanel::left("left_panel").show(ctx, |ui| {
             ui.heading("Manager");
             ui.add_space(20.0);
             ui.with_layout(
@@ -89,10 +93,22 @@ impl eframe::App for Manager {
                     if ui.button("Load Preset").clicked() {
                         // Send preset information
                     }
+                    ui.add_space(20.0);
+                    if ui.button("Midi to CV").clicked() {
+                        self.windows.push(Box::new(MidiToCv::new(format!(
+                            "Test{}",
+                            self.window_count
+                        ))));
+                        self.window_count += 1;
+                    }
                     ui.add_space(100.0);
                     ui.label(format!("{}", self.status));
                 },
             );
         });
+        self.windows.retain(|w| w.is_open());
+        for w in &mut self.windows {
+            w.update(ctx);
+        }
     }
 }

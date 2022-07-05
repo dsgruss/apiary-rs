@@ -200,7 +200,14 @@ impl<T: Network> Module<T> {
     }
 
     pub fn poll(&mut self, time: i64) -> Result<bool, Error> {
-        self.interface.poll(time)
+        self.interface.poll(time)?;
+        loop {
+            match self.recv_directive() {
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        Ok(false)
     }
 
     pub fn can_send(&mut self) -> bool {
@@ -211,7 +218,10 @@ impl<T: Network> Module<T> {
         let mut buf = [0; 2048];
         match self.interface.recv_directive(&mut buf) {
             Ok(size) => match serde_json_core::from_slice(&mut buf[0..size]) {
-                Ok((out, _)) => Ok(out),
+                Ok((out, _)) => {
+                    info!("<= {:?}", out);
+                    Ok(out)
+                }
                 Err(e) => {
                     info!("JSON Parse Error: {:?}", e);
                     Err(Error::Parse)
@@ -222,6 +232,7 @@ impl<T: Network> Module<T> {
     }
 
     pub fn send_directive(&mut self, directive: &Directive) -> Result<(), Error> {
+        info!("=> {:?}", directive);
         let mut buf = [0; 2048];
         match serde_json_core::to_slice(directive, &mut buf) {
             Ok(len) => self.interface.send_directive(&buf[0..len]),
