@@ -25,7 +25,9 @@ const CHANNELS: usize = 8;
 const BLOCK_SIZE: usize = 48;
 type SampleType = i16;
 
+const PREFERRED_SUBNET: &str = "10.0.0.0/8";
 const PATCH_EP: &str = "239.0.0.0:19874";
+const JACK_PORT: u16 = 19991;
 
 const SW: usize = 48;
 const JW: usize = 15;
@@ -182,12 +184,12 @@ pub trait Network {
     // Output bytes on the directive multicast
     fn send_directive(&mut self, buf: &[u8]) -> Result<(), Error>;
     // Connect an input jack to an output endpoint
-    fn jack_connect(&mut self, jack_id: u32, addr: &str, port: u16, time: i64)
+    fn jack_connect(&mut self, jack_id: usize, addr: &str, time: i64)
         -> Result<(), Error>;
     // Get audio data for a particular jack
-    fn jack_recv(&mut self, jack_id: u32, buf: &mut [u8]) -> Result<usize, Error>;
+    fn jack_recv(&mut self, jack_id: usize, buf: &mut [u8]) -> Result<usize, Error>;
     // Send audio data for a particular jack
-    fn jack_send(&mut self, jack_id: u32, buf: &[u8]) -> Result<(), Error>;
+    fn jack_send(&mut self, jack_id: usize, buf: &[u8]) -> Result<(), Error>;
 }
 
 pub struct Module<T: Network> {
@@ -242,15 +244,14 @@ impl<T: Network> Module<T> {
 
     pub fn jack_connect(
         &mut self,
-        jack_id: u32,
+        jack_id: usize,
         addr: &str,
-        port: u16,
         time: i64,
     ) -> Result<(), Error> {
-        self.interface.jack_connect(jack_id, addr, port, time)
+        self.interface.jack_connect(jack_id, addr, time)
     }
 
-    pub fn jack_recv(&mut self, jack_id: u32) -> Result<AudioPacket, Error> {
+    pub fn jack_recv(&mut self, jack_id: usize) -> Result<AudioPacket, Error> {
         let mut buf = [0; 2048];
         let size = self.interface.jack_recv(jack_id, &mut buf)?;
         match AudioPacket::read_from(&mut buf[0..size]) {
@@ -259,7 +260,7 @@ impl<T: Network> Module<T> {
         }
     }
 
-    pub fn jack_send(&mut self, jack_id: u32, data: &AudioPacket) -> Result<(), Error> {
+    pub fn jack_send(&mut self, jack_id: usize, data: &AudioPacket) -> Result<(), Error> {
         self.interface.jack_send(jack_id, data.as_bytes())
     }
 }

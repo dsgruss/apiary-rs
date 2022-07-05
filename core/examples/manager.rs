@@ -25,7 +25,7 @@ fn main() {
 
     let (tx, rx) = channel();
 
-    let mut module = Module::new(NativeInterface::new());
+    let mut module = Module::new(NativeInterface::new(0, 0).unwrap());
     let start = Instant::now();
     let out = Directive::Halt(DirectiveHalt {
         uuid: Uuid::from_str("GLOBAL").unwrap(),

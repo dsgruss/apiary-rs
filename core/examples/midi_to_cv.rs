@@ -33,12 +33,12 @@ impl MidiToCv {
         let in_ports = midi_check.ports();
         let mut midi_connections = vec![];
         for (i, p) in in_ports.iter().enumerate() {
-            info!("Opening {:?}", midi_check.port_name(&p).unwrap());
+            info!("Opening {:?}", midi_check.port_name(p).unwrap());
             let midi_in = MidiInput::new(&format!("midir input {}", i)).unwrap();
             let port_tx = tx.clone();
             let conn_in = midi_in
                 .connect(
-                    &p,
+                    p,
                     "midir-read-input",
                     move |stamp, message, _| {
                         info!("{}: {:?} (len = {})", stamp, message, message.len());
@@ -57,15 +57,15 @@ impl MidiToCv {
             midi_connections.push(conn_in);
         }
 
-        let mut module = Module::new(NativeInterface::new());
+        let mut module = Module::new(NativeInterface::new(0, 3).unwrap());
         let start = Instant::now();
         let mut time = 0;
-        thread::spawn(move || loop {
+        thread::spawn(move || 'outer: loop {
             while time < start.elapsed().as_millis() {
                 match rx.try_recv() {
                     Ok(message) => info!("{:?}", message),
                     Err(TryRecvError::Empty) => {},
-                    Err(TryRecvError::Disconnected) => break,
+                    Err(TryRecvError::Disconnected) => break 'outer,
                 }
                 module.poll(start.elapsed().as_millis() as i64).unwrap();
                 time += 1;
