@@ -11,7 +11,7 @@ use smoltcp::{
     wire::{EthernetAddress, IpAddress, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr},
 };
 
-use crate::{Error, Network};
+use crate::{Error, Network, JACK_PORT};
 
 const OUTPUT_JACK_EP: &str = "239.1.2.3:19991";
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xca, 0x55, 0xe7, 0x7e];
@@ -232,18 +232,12 @@ where
         }
     }
 
-    fn jack_connect(
-        &mut self,
-        jack_id: u32,
-        addr: &str,
-        port: u16,
-        time: i64,
-    ) -> Result<(), Error> {
+    fn jack_connect(&mut self, _jack_id: usize, addr: &str, time: i64) -> Result<(), Error> {
         match Ipv4Address::from_str(addr) {
             Err(_) => Err(Error::Network),
             Ok(address) => {
                 let t = Instant::from_millis(time);
-                let ep = IpEndpoint::new(IpAddress::Ipv4(address), port);
+                let ep = IpEndpoint::new(IpAddress::Ipv4(address), JACK_PORT);
                 if let Some(old_ep) = self.input_jack_endpoint {
                     if let Err(_) = self.iface.leave_multicast_group(old_ep.addr, t) {
                         return Err(Error::Network);
@@ -265,7 +259,7 @@ where
         }
     }
 
-    fn jack_recv(&mut self, jack_id: u32, buf: &mut [u8]) -> Result<usize, Error> {
+    fn jack_recv(&mut self, _jack_id: usize, buf: &mut [u8]) -> Result<usize, Error> {
         let jack_socket = self.iface.get_socket::<UdpSocket>(self.input_jack_handle);
         if jack_socket.can_recv() && self.dhcp_configured {
             match jack_socket.recv_slice(buf) {
@@ -277,7 +271,7 @@ where
         }
     }
 
-    fn jack_send(&mut self, jack_id: u32, buf: &[u8]) -> Result<(), Error> {
+    fn jack_send(&mut self, _jack_id: usize, buf: &[u8]) -> Result<(), Error> {
         let socket = self.iface.get_socket::<UdpSocket>(self.server_handle);
         if socket.can_send() && self.dhcp_configured {
             match socket.send_slice(buf, self.output_jack_endpoint) {

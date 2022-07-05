@@ -202,12 +202,7 @@ impl<T: Network> Module<T> {
 
     pub fn poll(&mut self, time: i64) -> Result<bool, Error> {
         self.interface.poll(time)?;
-        loop {
-            match self.recv_directive() {
-                Ok(_) => {}
-                Err(_) => break,
-            }
-        }
+        while let Ok(_) = self.recv_directive() {}
         Ok(false)
     }
 
@@ -218,7 +213,7 @@ impl<T: Network> Module<T> {
     pub fn recv_directive(&mut self) -> Result<Directive, Error> {
         let mut buf = [0; 2048];
         match self.interface.recv_directive(&mut buf) {
-            Ok(size) => match serde_json_core::from_slice(&mut buf[0..size]) {
+            Ok(size) => match serde_json_core::from_slice(&buf[0..size]) {
                 Ok((out, _)) => {
                     info!("<= {:?}", out);
                     Ok(out)

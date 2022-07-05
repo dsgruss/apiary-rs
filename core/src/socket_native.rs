@@ -48,14 +48,11 @@ impl NativeInterface {
         let preferred_subnet: Ipv4Net = PREFERRED_SUBNET.parse()?;
         let mut local_addr = Ipv4Addr::UNSPECIFIED;
         for (name, ip) in ips {
-            match ip {
-                V4(addr) => {
-                    info!("Found IP address: {:?} {:?}", name, addr);
-                    if preferred_subnet.contains(&addr) {
-                        local_addr = addr;
-                    }
+            if let V4(addr) = ip {
+                info!("Found IP address: {:?} {:?}", name, addr);
+                if preferred_subnet.contains(&addr) {
+                    local_addr = addr;
                 }
-                _ => {}
             }
         }
         info!("Using local address {:?}", local_addr);
