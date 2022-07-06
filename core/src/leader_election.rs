@@ -89,7 +89,7 @@ impl<T: RngCore> LeaderElection<T> {
         time > self.heartbeat_timeout
     }
 
-    pub fn poll(&mut self, message: Option<Directive>, time: i64) -> Option<Directive> {
+    pub(crate) fn poll(&mut self, message: Option<Directive>, time: i64) -> Option<Directive> {
         if self.check_message(&message).is_err() {
             return None;
         }
@@ -327,7 +327,7 @@ impl<T: RngCore> LeaderElection<T> {
         })
     }
 
-    pub fn update_local_state(&mut self, local_state: LocalState) {
+    pub(crate) fn update_local_state(&mut self, local_state: LocalState) {
         self.local_state = local_state;
     }
 }
