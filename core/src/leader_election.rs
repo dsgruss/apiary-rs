@@ -12,34 +12,33 @@ use rand_core::RngCore;
 
 const ELECTION_TIMEOUT_INTERVAL: (i64, i64) = (1500, 3000); // ms
 const HEARTBEAT_INTERVAL: i64 = 500; // ms
-                                     // const RESPONSE_TIMEOUT: i64 = 50; // ms
 const MAX_HOSTS: usize = 16;
 
 #[derive(PartialEq, Debug)]
-pub enum Roles {
-    FOLLOWER,
-    CANDIDATE,
-    LEADER,
+enum Roles {
+    Follower,
+    Candidate,
+    Leader,
 }
 
-pub struct LeaderElection<T: RngCore> {
+pub(crate) struct LeaderElection<T: RngCore> {
     id: Uuid,
     seen_hosts: FnvIndexMap<Uuid, Option<LocalState>, MAX_HOSTS>,
     rand_source: T,
     local_state: LocalState,
     election_timeout: i64,
     heartbeat_timeout: i64,
-    pub current_term: u32,
-    pub voted_for: Option<Uuid>,
-    pub role: Roles,
+    current_term: u32,
+    voted_for: Option<Uuid>,
+    role: Roles,
     votes_got: u32,
-    pub iteration: u32,
+    iteration: u32,
     last_update: Option<Directive>,
     last_seen_hosts: Option<usize>,
 }
 
 impl<T: RngCore> LeaderElection<T> {
-    pub fn new(id: Uuid, time: i64, mut rand_source: T) -> Self {
+    pub(crate) fn new(id: Uuid, time: i64, mut rand_source: T) -> Self {
         let seen_hosts = FnvIndexMap::<_, _, MAX_HOSTS>::new();
 
         let election_timeout = (rand_source.next_u32() as i64)
@@ -56,7 +55,7 @@ impl<T: RngCore> LeaderElection<T> {
             heartbeat_timeout: HEARTBEAT_INTERVAL + time,
             current_term: 0,
             voted_for: None,
-            role: Roles::FOLLOWER,
+            role: Roles::Follower,
             votes_got: 0,
             iteration: 0,
             last_update: None,
@@ -64,10 +63,10 @@ impl<T: RngCore> LeaderElection<T> {
         }
     }
 
-    pub fn reset(&mut self, time: i64) {
+    pub(crate) fn reset(&mut self, time: i64) {
         self.reset_election_timer(time);
         self.reset_heartbeat_timer(time);
-        self.role = Roles::FOLLOWER;
+        self.role = Roles::Follower;
     }
 
     fn reset_election_timer(&mut self, time: i64) {
@@ -103,9 +102,9 @@ impl<T: RngCore> LeaderElection<T> {
                 if hb.term < self.current_term {
                     Some(self.heartbeat_response_fail(self.current_term))
                 } else {
-                    if hb.term > self.current_term || self.role == Roles::CANDIDATE {
+                    if hb.term > self.current_term || self.role == Roles::Candidate {
                         self.current_term = hb.term;
-                        self.role = Roles::FOLLOWER;
+                        self.role = Roles::Follower;
                         self.voted_for = Some(hb.uuid.clone());
                     }
                     self.reset_election_timer(time);
@@ -124,7 +123,7 @@ impl<T: RngCore> LeaderElection<T> {
                 } else {
                     if rv.term > self.current_term {
                         self.current_term = rv.term;
-                        self.role = Roles::FOLLOWER;
+                        self.role = Roles::Follower;
                         self.voted_for = Some(rv.uuid.clone());
                     }
                     Some(match &self.voted_for {
@@ -135,9 +134,9 @@ impl<T: RngCore> LeaderElection<T> {
                 }
             }
             resp => match self.role {
-                Roles::FOLLOWER => {
+                Roles::Follower => {
                     if self.election_timer_elapsed(time) {
-                        self.role = Roles::CANDIDATE;
+                        self.role = Roles::Candidate;
                         self.current_term += 1;
                         self.voted_for = Some(self.id.clone());
                         self.seen_hosts.clear();
@@ -155,28 +154,28 @@ impl<T: RngCore> LeaderElection<T> {
                         None
                     }
                 }
-                Roles::CANDIDATE => {
+                Roles::Candidate => {
                     if let Some(RequestVoteResponse(rvr)) = resp {
                         if rvr.term == self.current_term && rvr.voted_for == self.id {
                             if rvr.vote_granted {
                                 self.votes_got += 1;
                             } else {
-                                self.role = Roles::FOLLOWER;
+                                self.role = Roles::Follower;
                             }
                         }
                     }
                     if self.heartbeat_timer_elapsed(time) {
                         if 2 * self.votes_got / self.seen_hosts.len() as u32 >= 1 {
                             info!("{:?} has been elected leader", self.id);
-                            self.role = Roles::LEADER;
+                            self.role = Roles::Leader;
                             self.iteration = 0;
                         } else {
-                            self.role = Roles::FOLLOWER;
+                            self.role = Roles::Follower;
                         }
                     }
                     None
                 }
-                Roles::LEADER => {
+                Roles::Leader => {
                     if let Some(HeartbeatResponse(DirectiveHeartbeatResponse {
                         uuid: id,
                         term: _,
@@ -188,6 +187,7 @@ impl<T: RngCore> LeaderElection<T> {
                         if i == self.iteration {
                             // A timeout value should be added here for modules that go offline
                             self.seen_hosts.insert(id, Some(s)).unwrap();
+
                             // If everyone known checked in, then send update
                             if Some(self.seen_hosts.len()) == self.last_seen_hosts {
                                 let result = self.check_global_state_update();
@@ -209,6 +209,7 @@ impl<T: RngCore> LeaderElection<T> {
                                 return Some(result);
                             }
                         }
+
                         self.reset_heartbeat_timer(time);
                         self.last_seen_hosts = Some(self.seen_hosts.len());
                         self.seen_hosts.clear();
@@ -268,6 +269,7 @@ impl<T: RngCore> LeaderElection<T> {
             input_jack_count += local_state.held_inputs.len();
             output_jack_count += local_state.held_outputs.len();
         }
+
         let update = Some(match (input_jack_count, output_jack_count) {
             (0, 0) => self.gsu(PatchState::Idle, None, None),
             (1, 0) => self.gsu(PatchState::PatchEnabled, input_jack, None),
