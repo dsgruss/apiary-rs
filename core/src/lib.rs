@@ -216,7 +216,7 @@ pub struct Module<T: Network, R: RngCore> {
 
 impl<T: Network, R: RngCore> Module<T, R> {
     pub fn new(interface: T, rand_source: R, id: Uuid, time: i64) -> Self {
-        let leader_election = LeaderElection::new(id.clone(), time, rand_source);
+        let leader_election = LeaderElection::new(id, time, rand_source);
         Module {
             interface,
             leader_election,

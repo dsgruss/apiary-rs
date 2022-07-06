@@ -90,7 +90,7 @@ impl<T: RngCore> LeaderElection<T> {
     }
 
     pub fn poll(&mut self, message: Option<Directive>, time: i64) -> Option<Directive> {
-        if let Err(_) = self.check_message(&message) {
+        if self.check_message(&message).is_err() {
             return None;
         }
 
@@ -258,8 +258,7 @@ impl<T: RngCore> LeaderElection<T> {
         let mut output_jack = None;
         let mut input_jack_count = 0;
         let mut output_jack_count = 0;
-        for v in self.seen_hosts.values() {
-            if let Some(local_state) = v {
+        for local_state in self.seen_hosts.values().flatten() {
                 if local_state.held_inputs.len() == 1 && input_jack.is_none() {
                     input_jack = Some(local_state.held_inputs[0].clone());
                 }
@@ -268,7 +267,6 @@ impl<T: RngCore> LeaderElection<T> {
                 }
                 input_jack_count += local_state.held_inputs.len();
                 output_jack_count += local_state.held_outputs.len();
-            }
         }
         let update = Some(match (input_jack_count, output_jack_count) {
             (0, 0) => self.gsu(PatchState::Idle, None, None),
