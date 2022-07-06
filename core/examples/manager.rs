@@ -1,5 +1,6 @@
 use apiary_core::{socket_native::NativeInterface, Module};
 use eframe::egui::{self};
+use simple_logger::SimpleLogger;
 use std::{
     sync::mpsc::{channel, Sender, TryRecvError},
     thread,
@@ -16,7 +17,7 @@ use midi_to_cv::MidiToCv;
 extern crate log;
 
 fn main() {
-    simple_logger::init_with_level(log::Level::Info).unwrap();
+    SimpleLogger::new().with_level(log::LevelFilter::Info).without_timestamps().init().unwrap();
 
     let grid_size = (36.0, 19.0);
     let grid_pos = (0.0, 0.0);
@@ -28,6 +29,8 @@ fn main() {
             NativeInterface::new(0, 0).unwrap(),
             rand::thread_rng(),
             "Manager".into(),
+            0,
+            0,
             0,
         );
         let start = Instant::now();

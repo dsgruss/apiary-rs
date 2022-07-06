@@ -33,6 +33,10 @@ impl<const P: char, const N: u8> Switch<P, N> {
     pub fn pressed(&self) -> bool {
         self.switch_state == 0x00
     }
+
+    pub fn changed(&self) -> bool {
+        self.just_pressed() || self.released()
+    }
 }
 
 pub struct Led<const P: char, const N: u8> {
@@ -82,7 +86,7 @@ impl Ui {
         }
     }
 
-    pub fn poll(&mut self) -> (bool, bool) {
+    pub fn poll(&mut self) -> (bool, bool, bool) {
         self.sw_sig2.debounce();
         self.sw_sig4.debounce();
         if self.sw_sig2.just_pressed() {
@@ -99,6 +103,7 @@ impl Ui {
         if self.sw_sig4.released() {
             info!("SW4 switch released");
         }
-        (self.sw_sig2.pressed(), self.sw_sig4.pressed())
+        
+        (self.sw_sig2.changed() || self.sw_sig4.changed(), self.sw_sig2.just_pressed(), self.sw_sig4.just_pressed())
     }
 }

@@ -22,7 +22,6 @@ use stm32f4xx_hal::{
 use core::cell::RefCell;
 use core::fmt::Write;
 use fugit::RateExtU32;
-use heapless::String;
 
 use stm32_eth::{EthPins, RingEntry};
 
@@ -65,8 +64,7 @@ impl log::Log for SerialLogger {
 static LOGGER: SerialLogger = SerialLogger::new();
 
 use apiary_core::{
-    socket_smoltcp::SmoltcpInterface, AudioPacket, Error, HeldInputJack, HeldOutputJack,
-    LocalState, Module, Uuid,
+    socket_smoltcp::SmoltcpInterface, AudioPacket, Error, Module, Uuid,
 };
 
 use apiary::{Ui, UiPins};
@@ -101,7 +99,7 @@ fn main() -> ! {
     info!("Serial debug active");
 
     let uuid = Uuid::from("hardware");
-    let addr = String::from("239.1.2.3");
+    // let addr = String::from("239.1.2.3");
     let rand_source = p.RNG.constrain(&clocks);
 
     let ui_pins = UiPins {
@@ -144,6 +142,8 @@ fn main() -> ! {
         rand_source,
         uuid.clone(),
         0,
+        1,
+        1,
     );
 
     info!("Sockets created");
@@ -176,30 +176,11 @@ fn main() -> ! {
         time += 1;
 
         let ui_start = timer.now().ticks();
-        let (sw2, sw4) = ui.poll();
-        let mut local_state: LocalState = Default::default();
-        if sw2 {
-            local_state
-                .held_inputs
-                .push(HeldInputJack {
-                    uuid: uuid.clone(),
-                    id: 0,
-                })
-                .unwrap();
+        let (changed, sw2, sw4) = ui.poll();
+        if changed {
+            module.set_input_patch_enabled(0, sw2).unwrap();
+            module.set_output_patch_enabled(0, sw4).unwrap();
         }
-        if sw4 {
-            local_state
-                .held_outputs
-                .push(HeldOutputJack {
-                    uuid: uuid.clone(),
-                    id: 1,
-                    color: 48,
-                    addr: addr.clone(),
-                    port: 19991,
-                })
-                .unwrap();
-        }
-        // leader_election.update_local_state(local_state);
         ui_accum += timer.now().ticks() - ui_start;
 
         let poll_start = timer.now().ticks();

@@ -77,8 +77,8 @@ struct HeldOutputJack {
     uuid: Uuid,
     id: JackId,
     color: u32,
-    addr: String<SW>,
-    port: u16,
+    addr: [u8; 4],
+    // port: u16,
 }
 
 #[derive(PartialEq, Serialize, Deserialize, Default, Clone, Debug)]
@@ -197,6 +197,8 @@ pub trait Network {
     fn jack_recv(&mut self, jack_id: usize, buf: &mut [u8]) -> Result<usize, Error>;
     /// Send audio data for a particular jack
     fn jack_send(&mut self, jack_id: usize, buf: &[u8]) -> Result<(), Error>;
+    /// Get multicast address for a particular jack
+    fn jack_addr(&mut self, jack_id: usize) -> Result<[u8; 4], Error>;
 }
 
 /// Module communication and state handling.
@@ -210,16 +212,26 @@ pub trait Network {
 /// source of random source, and `poll`-ing the module at regular intervals to perform network
 /// updates.
 pub struct Module<T: Network, R: RngCore> {
+    uuid: Uuid,
     interface: T,
     leader_election: LeaderElection<R>,
+    input_count: usize,
+    output_count: usize,
+    input_patch_enabled: u16,
+    output_patch_enabled: u16,
 }
 
 impl<T: Network, R: RngCore> Module<T, R> {
-    pub fn new(interface: T, rand_source: R, id: Uuid, time: i64) -> Self {
-        let leader_election = LeaderElection::new(id, time, rand_source);
+    pub fn new(interface: T, rand_source: R, id: Uuid, time: i64, input_count: usize, output_count: usize) -> Self {
+        let leader_election = LeaderElection::new(id.clone(), time, rand_source);
         Module {
+            uuid: id,
             interface,
             leader_election,
+            input_count,
+            output_count,
+            input_patch_enabled: 0,
+            output_patch_enabled: 0,
         }
     }
 
@@ -294,6 +306,56 @@ impl<T: Network, R: RngCore> Module<T, R> {
         if let Err(e) = self.send_directive(&out) {
             info!("Halt command failed {:?}", e);
         }
+    }
+
+    pub fn set_input_patch_enabled(&mut self, jack_id: usize, status: bool) -> Result<(), Error> {
+        if jack_id >= self.input_count {
+            Err(Error::InvalidJackId)
+        } else {
+            if status {
+                self.input_patch_enabled |= 1 << jack_id;
+            } else {
+                self.input_patch_enabled &= !(1 << jack_id);
+            }
+            self.update_patch_state()
+        }
+    }
+
+    pub fn set_output_patch_enabled(&mut self, jack_id: usize, status: bool) -> Result<(), Error> {
+        if jack_id >= self.output_count {
+            Err(Error::InvalidJackId)
+        } else {
+            if status {
+                self.output_patch_enabled |= 1 << jack_id;
+            } else {
+                self.output_patch_enabled &= !(1 << jack_id);
+            }
+            self.update_patch_state()
+        }
+    }
+
+    fn update_patch_state(&mut self) -> Result<(), Error> {
+        let mut local_state: LocalState = Default::default();
+        for i in 0..self.input_count {
+            if (self.input_patch_enabled & (1 << i)) != 0 {
+                local_state.held_inputs.push(HeldInputJack {
+                    uuid: self.uuid.clone(),
+                    id: i as u32,
+                }).unwrap();
+            }
+        }
+        for i in 0..self.output_count {
+            if (self.output_patch_enabled & (1 << i)) != 0 {
+                local_state.held_outputs.push(HeldOutputJack { 
+                    uuid: self.uuid.clone(),
+                    id: i as u32,
+                    color: 30,
+                    addr: self.interface.jack_addr(i)?,
+                }).unwrap();
+            }
+        }
+        self.leader_election.update_local_state(local_state);
+        Ok(())
     }
 }
 

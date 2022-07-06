@@ -2,7 +2,7 @@ use apiary_core::{socket_native::NativeInterface, Module};
 use eframe::egui;
 use midir::{MidiInput, MidiInputConnection};
 use std::{
-    sync::mpsc::{channel, TryRecvError},
+    sync::mpsc::{channel, TryRecvError, Sender, Receiver},
     thread,
     time::{Duration, Instant},
 };
@@ -16,6 +16,7 @@ pub struct MidiToCv {
     note_checked: bool,
     gate_checked: bool,
     mdwh_checked: bool,
+    tx: Sender<(usize, bool)>,
 }
 
 #[derive(Debug)]
@@ -58,12 +59,16 @@ impl MidiToCv {
             midi_connections.push(conn_in);
         }
 
+        let (tx2, rx2): (Sender<(usize, bool)>, Receiver<(usize, bool)>) = channel();
+
         thread::spawn(move || {
             let mut module = Module::new(
                 NativeInterface::new(0, 3).unwrap(),
                 rand::thread_rng(),
                 "Midi_to_cv".into(),
                 0,
+                0,
+                3,
             );
             let start = Instant::now();
             let mut time = 0;
@@ -72,6 +77,16 @@ impl MidiToCv {
                 while time < start.elapsed().as_millis() {
                     match rx.try_recv() {
                         Ok(message) => info!("{:?}", message),
+                        Err(TryRecvError::Empty) => {}
+                        Err(TryRecvError::Disconnected) => break 'outer,
+                    }
+                    match rx2.try_recv() {
+                        Ok(message) => {
+                            info!("{:?}", message);
+                            if let Err(e) = module.set_output_patch_enabled(message.0, message.1) {
+                                info!("Error {:?}", e);
+                            }
+                        }
                         Err(TryRecvError::Empty) => {}
                         Err(TryRecvError::Disconnected) => break 'outer,
                     }
@@ -89,6 +104,7 @@ impl MidiToCv {
             note_checked: false,
             gate_checked: false,
             mdwh_checked: false,
+            tx: tx2,
         }
     }
 }
@@ -108,9 +124,15 @@ impl DisplayModule for MidiToCv {
             .show(ctx, |ui| {
                 ui.heading("Midi to CV");
                 ui.add_space(20.0);
-                ui.checkbox(&mut self.note_checked, "Note");
-                ui.checkbox(&mut self.gate_checked, "Gate");
-                ui.checkbox(&mut self.mdwh_checked, "Mod wheel");
+                if ui.checkbox(&mut self.note_checked, "Note").changed() {
+                    self.tx.send((0, self.note_checked)).unwrap();
+                }
+                if ui.checkbox(&mut self.gate_checked, "Gate").changed() {
+                    self.tx.send((1, self.gate_checked)).unwrap();
+                }
+                if ui.checkbox(&mut self.mdwh_checked, "Mod wheel").changed() {
+                    self.tx.send((2, self.mdwh_checked)).unwrap();
+                }
             });
     }
 }

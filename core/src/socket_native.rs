@@ -136,7 +136,7 @@ impl Network for NativeInterface {
     }
 
     fn jack_connect(&mut self, jack_id: usize, addr: &str, _time: i64) -> Result<(), Error> {
-        if jack_id > self.input_sockets.len() {
+        if jack_id >= self.input_sockets.len() {
             return Err(Error::InvalidJackId);
         }
         match self.input_groups[jack_id] {
@@ -152,7 +152,7 @@ impl Network for NativeInterface {
     }
 
     fn jack_recv(&mut self, jack_id: usize, buf: &mut [u8]) -> Result<usize, Error> {
-        if jack_id > self.input_sockets.len() {
+        if jack_id >= self.input_sockets.len() {
             return Err(Error::InvalidJackId);
         }
         // Safety: the `recv` implementation promises not to write uninitialised
@@ -165,7 +165,7 @@ impl Network for NativeInterface {
     }
 
     fn jack_send(&mut self, jack_id: usize, buf: &[u8]) -> Result<(), Error> {
-        if jack_id > self.output_eps.len() {
+        if jack_id >= self.output_eps.len() {
             return Err(Error::InvalidJackId);
         }
         match self
@@ -175,5 +175,12 @@ impl Network for NativeInterface {
             Ok(_) => Ok(()),
             Err(_) => Err(Error::Network),
         }
+    }
+
+    fn jack_addr(&mut self, jack_id: usize) -> Result<[u8; 4], Error> {
+        if jack_id >= self.output_eps.len() {
+            return Err(Error::InvalidJackId);
+        }
+        Ok(self.output_eps[jack_id].ip().octets())
     }
 }
