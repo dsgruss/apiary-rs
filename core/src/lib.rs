@@ -18,6 +18,8 @@ pub mod socket_native;
 pub mod socket_smoltcp;
 
 use heapless::{String, Vec};
+use leader_election::LeaderElection;
+use rand_core::RngCore;
 use serde::{Deserialize, Serialize};
 use zerocopy::{AsBytes, FromBytes};
 
@@ -25,7 +27,9 @@ const CHANNELS: usize = 8;
 const BLOCK_SIZE: usize = 48;
 type SampleType = i16;
 
+#[cfg(feature = "network-native")]
 const PREFERRED_SUBNET: &str = "10.0.0.0/8";
+
 const PATCH_EP: &str = "239.0.0.0:19874";
 const JACK_PORT: u16 = 19991;
 
@@ -191,19 +195,31 @@ pub trait Network {
     fn jack_send(&mut self, jack_id: usize, buf: &[u8]) -> Result<(), Error>;
 }
 
-pub struct Module<T: Network> {
+pub struct Module<T: Network, R: RngCore> {
     interface: T,
+    leader_election: LeaderElection<R>,
 }
 
-impl<T: Network> Module<T> {
-    pub fn new(interface: T) -> Self {
-        Module { interface }
+impl<T: Network, R: RngCore> Module<T, R> {
+    pub fn new(interface: T, rand_source: R, id: Uuid, time: i64) -> Self {
+        let leader_election = LeaderElection::new(id.clone(), time, rand_source);
+        Module {
+            interface,
+            leader_election,
+        }
     }
 
-    pub fn poll(&mut self, time: i64) -> Result<bool, Error> {
+    pub fn poll(&mut self, time: i64) -> Result<(), Error> {
         self.interface.poll(time)?;
-        while let Ok(_) = self.recv_directive() {}
-        Ok(false)
+        while let Ok(d) = self.recv_directive() {
+            if let Some(resp) = self.leader_election.poll(Some(d), time) {
+                self.send_directive(&resp)?;
+            }
+        }
+        if let Some(resp) = self.leader_election.poll(None, time) {
+            self.send_directive(&resp)?;
+        }
+        Ok(())
     }
 
     pub fn can_send(&mut self) -> bool {

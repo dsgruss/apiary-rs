@@ -58,20 +58,28 @@ impl MidiToCv {
             midi_connections.push(conn_in);
         }
 
-        let mut module = Module::new(NativeInterface::new(0, 3).unwrap());
-        let start = Instant::now();
-        let mut time = 0;
-        thread::spawn(move || 'outer: loop {
-            while time < start.elapsed().as_millis() {
-                match rx.try_recv() {
-                    Ok(message) => info!("{:?}", message),
-                    Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => break 'outer,
+        thread::spawn(move || {
+            let mut module = Module::new(
+                NativeInterface::new(0, 3).unwrap(),
+                rand::thread_rng(),
+                "Midi_to_cv".into(),
+                0,
+            );
+            let start = Instant::now();
+            let mut time = 0;
+
+            'outer: loop {
+                while time < start.elapsed().as_millis() {
+                    match rx.try_recv() {
+                        Ok(message) => info!("{:?}", message),
+                        Err(TryRecvError::Empty) => {}
+                        Err(TryRecvError::Disconnected) => break 'outer,
+                    }
+                    module.poll(start.elapsed().as_millis() as i64).unwrap();
+                    time += 1;
                 }
-                module.poll(start.elapsed().as_millis() as i64).unwrap();
-                time += 1;
+                thread::sleep(Duration::from_millis(0));
             }
-            thread::sleep(Duration::from_millis(0));
         });
 
         MidiToCv {

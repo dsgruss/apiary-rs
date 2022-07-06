@@ -65,8 +65,8 @@ impl log::Log for SerialLogger {
 static LOGGER: SerialLogger = SerialLogger::new();
 
 use apiary_core::{
-    leader_election::LeaderElection, socket_smoltcp::SmoltcpInterface, AudioPacket, Directive,
-    Error, HeldInputJack, HeldOutputJack, LocalState, Module, Uuid,
+    socket_smoltcp::SmoltcpInterface, AudioPacket, Error, HeldInputJack, HeldOutputJack,
+    LocalState, Module, Uuid,
 };
 
 use apiary::{Ui, UiPins};
@@ -102,8 +102,7 @@ fn main() -> ! {
 
     let uuid = Uuid::from("hardware");
     let addr = String::from("239.1.2.3");
-    let mut rand_source = p.RNG.constrain(&clocks);
-    let mut leader_election = LeaderElection::new(uuid.clone(), 0, &mut rand_source);
+    let rand_source = p.RNG.constrain(&clocks);
 
     let ui_pins = UiPins {
         sw_sig2: gpiod.pd12,
@@ -140,7 +139,12 @@ fn main() -> ! {
     eth_dma.enable_interrupt();
 
     let mut storage = Default::default();
-    let mut module = Module::new(SmoltcpInterface::new(&mut eth_dma, &mut storage));
+    let mut module = Module::new(
+        SmoltcpInterface::new(&mut eth_dma, &mut storage),
+        rand_source,
+        uuid.clone(),
+        0,
+    );
 
     info!("Sockets created");
 
@@ -195,50 +199,13 @@ fn main() -> ! {
                 })
                 .unwrap();
         }
-        leader_election.update_local_state(local_state);
+        // leader_election.update_local_state(local_state);
         ui_accum += timer.now().ticks() - ui_start;
 
         let poll_start = timer.now().ticks();
-        match module.poll(time) {
-            Ok(_) => {}
-            Err(e) => {
-                info!("Poll error: {:?}", e);
-            }
-        }
-        match module.recv_directive() {
-            Ok(Directive::Halt(directive)) => {
-                info!("Got HALT directive: {:?}", directive.uuid);
-            }
-            Ok(Directive::SetInputJack(directive)) => {
-                module
-                    .jack_connect(0, &directive.source.addr, directive.source.port, time)
-                    .unwrap();
-            }
-            Ok(dir) => {
-                if module.can_send() {
-                    if let Some(resp) = leader_election.poll(Some(dir), time) {
-                        if let Err(e) = module.send_directive(&resp) {
-                            info!("Directive send error: {:?}", e);
-                        }
-                    }
-                } else {
-                    leader_election.reset(time);
-                }
-            }
-            Err(Error::NoData) => {
-                if module.can_send() {
-                    if let Some(resp) = leader_election.poll(None, time) {
-                        if let Err(e) = module.send_directive(&resp) {
-                            info!("Directive send error: {:?}", e);
-                        }
-                    }
-                } else {
-                    leader_election.reset(time);
-                }
-            }
-            Err(e) => {
-                // Ignore malformed packets
-                info!("Error: {:?}", e);
+        if let Err(e) = module.poll(time) {
+            if module.can_send() {
+                info!("Data send error: {:?}", e);
             }
         }
         poll_accum += timer.now().ticks() - poll_start;
@@ -277,6 +244,7 @@ fn main() -> ! {
                 adc_accum / 1000
             );
             info!("ADC current sample: {:?}", adc.sample_to_millivolts(sample));
+            /*
             info!(
                 "Election status: {:?}:{}:{}, leader is {:?}",
                 leader_election.role,
@@ -284,6 +252,7 @@ fn main() -> ! {
                 leader_election.iteration,
                 leader_election.voted_for
             );
+            */
 
             ui_accum = 0;
             send_accum = 0;

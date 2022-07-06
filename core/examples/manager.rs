@@ -25,24 +25,32 @@ fn main() {
 
     let (tx, rx) = channel();
 
-    let mut module = Module::new(NativeInterface::new(0, 0).unwrap());
-    let start = Instant::now();
-    let out = Directive::Halt(DirectiveHalt {
-        uuid: Uuid::from_str("GLOBAL").unwrap(),
-    });
-    let mut time = 0;
-    thread::spawn(move || loop {
-        while time < start.elapsed().as_millis() {
-            module.poll(start.elapsed().as_millis() as i64).unwrap();
-            match rx.try_recv() {
-                Ok(true) => module.send_directive(&out).unwrap(),
-                Ok(false) => {}
-                Err(TryRecvError::Empty) => {}
-                Err(e) => panic!("{:?}", e),
+    thread::spawn(move || {
+        let mut module = Module::new(
+            NativeInterface::new(0, 0).unwrap(),
+            rand::thread_rng(),
+            "Manager".into(),
+            0,
+        );
+        let start = Instant::now();
+        let out = Directive::Halt(DirectiveHalt {
+            uuid: Uuid::from_str("GLOBAL").unwrap(),
+        });
+        let mut time = 0;
+
+        loop {
+            while time < start.elapsed().as_millis() {
+                module.poll(start.elapsed().as_millis() as i64).unwrap();
+                match rx.try_recv() {
+                    Ok(true) => module.send_directive(&out).unwrap(),
+                    Ok(false) => {}
+                    Err(TryRecvError::Empty) => {}
+                    Err(e) => panic!("{:?}", e),
+                }
+                time += 1;
             }
-            time += 1;
+            thread::sleep(Duration::from_millis(0));
         }
-        thread::sleep(Duration::from_millis(0));
     });
 
     let mut options = eframe::NativeOptions::default();
