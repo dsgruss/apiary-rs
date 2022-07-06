@@ -2,7 +2,7 @@ use apiary_core::{socket_native::NativeInterface, Module};
 use eframe::egui;
 use midir::{MidiInput, MidiInputConnection};
 use std::{
-    sync::mpsc::{channel, TryRecvError, Sender, Receiver},
+    sync::mpsc::{channel, Receiver, Sender, TryRecvError},
     thread,
     time::{Duration, Instant},
 };

@@ -63,9 +63,7 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger::new();
 
-use apiary_core::{
-    socket_smoltcp::SmoltcpInterface, AudioPacket, Error, Module, Uuid,
-};
+use apiary_core::{socket_smoltcp::SmoltcpInterface, AudioPacket, Error, Module, Uuid};
 
 use apiary::{Ui, UiPins};
 

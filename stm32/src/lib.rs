@@ -103,7 +103,11 @@ impl Ui {
         if self.sw_sig4.released() {
             info!("SW4 switch released");
         }
-        
-        (self.sw_sig2.changed() || self.sw_sig4.changed(), self.sw_sig2.just_pressed(), self.sw_sig4.just_pressed())
+
+        (
+            self.sw_sig2.changed() || self.sw_sig4.changed(),
+            self.sw_sig2.just_pressed(),
+            self.sw_sig4.just_pressed(),
+        )
     }
 }

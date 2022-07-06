@@ -289,6 +289,10 @@ where
     }
 
     fn jack_addr(&mut self, _jack_id: usize) -> Result<[u8; 4], Error> {
-        self.output_jack_endpoint.addr.as_bytes().try_into().or(Err(Error::InvalidJackId))
+        self.output_jack_endpoint
+            .addr
+            .as_bytes()
+            .try_into()
+            .or(Err(Error::InvalidJackId))
     }
 }

@@ -17,7 +17,11 @@ use midi_to_cv::MidiToCv;
 extern crate log;
 
 fn main() {
-    SimpleLogger::new().with_level(log::LevelFilter::Info).without_timestamps().init().unwrap();
+    SimpleLogger::new()
+        .with_level(log::LevelFilter::Info)
+        .without_timestamps()
+        .init()
+        .unwrap();
 
     let grid_size = (36.0, 19.0);
     let grid_pos = (0.0, 0.0);

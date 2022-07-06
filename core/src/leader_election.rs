@@ -259,14 +259,14 @@ impl<T: RngCore> LeaderElection<T> {
         let mut input_jack_count = 0;
         let mut output_jack_count = 0;
         for local_state in self.seen_hosts.values().flatten() {
-                if local_state.held_inputs.len() == 1 && input_jack.is_none() {
-                    input_jack = Some(local_state.held_inputs[0].clone());
-                }
-                if local_state.held_outputs.len() == 1 && output_jack.is_none() {
-                    output_jack = Some(local_state.held_outputs[0].clone());
-                }
-                input_jack_count += local_state.held_inputs.len();
-                output_jack_count += local_state.held_outputs.len();
+            if local_state.held_inputs.len() == 1 && input_jack.is_none() {
+                input_jack = Some(local_state.held_inputs[0].clone());
+            }
+            if local_state.held_outputs.len() == 1 && output_jack.is_none() {
+                output_jack = Some(local_state.held_outputs[0].clone());
+            }
+            input_jack_count += local_state.held_inputs.len();
+            output_jack_count += local_state.held_outputs.len();
         }
         let update = Some(match (input_jack_count, output_jack_count) {
             (0, 0) => self.gsu(PatchState::Idle, None, None),

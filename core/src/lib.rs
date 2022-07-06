@@ -222,7 +222,14 @@ pub struct Module<T: Network, R: RngCore> {
 }
 
 impl<T: Network, R: RngCore> Module<T, R> {
-    pub fn new(interface: T, rand_source: R, id: Uuid, time: i64, input_count: usize, output_count: usize) -> Self {
+    pub fn new(
+        interface: T,
+        rand_source: R,
+        id: Uuid,
+        time: i64,
+        input_count: usize,
+        output_count: usize,
+    ) -> Self {
         let leader_election = LeaderElection::new(id.clone(), time, rand_source);
         Module {
             uuid: id,
@@ -338,20 +345,26 @@ impl<T: Network, R: RngCore> Module<T, R> {
         let mut local_state: LocalState = Default::default();
         for i in 0..self.input_count {
             if (self.input_patch_enabled & (1 << i)) != 0 {
-                local_state.held_inputs.push(HeldInputJack {
-                    uuid: self.uuid.clone(),
-                    id: i as u32,
-                }).unwrap();
+                local_state
+                    .held_inputs
+                    .push(HeldInputJack {
+                        uuid: self.uuid.clone(),
+                        id: i as u32,
+                    })
+                    .unwrap();
             }
         }
         for i in 0..self.output_count {
             if (self.output_patch_enabled & (1 << i)) != 0 {
-                local_state.held_outputs.push(HeldOutputJack { 
-                    uuid: self.uuid.clone(),
-                    id: i as u32,
-                    color: 30,
-                    addr: self.interface.jack_addr(i)?,
-                }).unwrap();
+                local_state
+                    .held_outputs
+                    .push(HeldOutputJack {
+                        uuid: self.uuid.clone(),
+                        id: i as u32,
+                        color: 30,
+                        addr: self.interface.jack_addr(i)?,
+                    })
+                    .unwrap();
             }
         }
         self.leader_election.update_local_state(local_state);
