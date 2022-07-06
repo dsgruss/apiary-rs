@@ -204,9 +204,7 @@ fn main() -> ! {
 
         let poll_start = timer.now().ticks();
         if let Err(e) = module.poll(time) {
-            if module.can_send() {
-                info!("Data send error: {:?}", e);
-            }
+            info!("Data send error: {:?}", e);
         }
         poll_accum += timer.now().ticks() - poll_start;
 

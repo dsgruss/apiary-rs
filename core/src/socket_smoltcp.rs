@@ -1,3 +1,8 @@
+/*! smoltcp-based socket interface.
+
+This module provides communication (via the `Network` trait) and basic network management using a `smoltcp`-based network stack, for devices that do not otherwise provide one.
+*/
+
 use core::str::FromStr;
 
 use smoltcp::{

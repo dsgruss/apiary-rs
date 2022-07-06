@@ -1,8 +1,6 @@
-use apiary_core::{socket_native::NativeInterface, Directive, DirectiveHalt, Module, Uuid};
+use apiary_core::{socket_native::NativeInterface, Module};
 use eframe::egui::{self};
-use simple_logger::SimpleLogger;
 use std::{
-    str::FromStr,
     sync::mpsc::{channel, Sender, TryRecvError},
     thread,
     time::{Duration, Instant},
@@ -18,7 +16,7 @@ use midi_to_cv::MidiToCv;
 extern crate log;
 
 fn main() {
-    SimpleLogger::new().init().unwrap();
+    simple_logger::init_with_level(log::Level::Info).unwrap();
 
     let grid_size = (36.0, 19.0);
     let grid_pos = (0.0, 0.0);
@@ -33,19 +31,16 @@ fn main() {
             0,
         );
         let start = Instant::now();
-        let out = Directive::Halt(DirectiveHalt {
-            uuid: Uuid::from_str("GLOBAL").unwrap(),
-        });
         let mut time = 0;
 
-        loop {
+        'outer: loop {
             while time < start.elapsed().as_millis() {
                 module.poll(start.elapsed().as_millis() as i64).unwrap();
                 match rx.try_recv() {
-                    Ok(true) => module.send_directive(&out).unwrap(),
+                    Ok(true) => module.send_halt(),
                     Ok(false) => {}
                     Err(TryRecvError::Empty) => {}
-                    Err(e) => panic!("{:?}", e),
+                    Err(TryRecvError::Disconnected) => break 'outer,
                 }
                 time += 1;
             }

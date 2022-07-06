@@ -1,10 +1,10 @@
 use crate::{
     Directive,
-    Directive::{Heartbeat, HeartbeatResponse, RequestVote, RequestVoteResponse},
+    Directive::{Heartbeat, HeartbeatResponse, RequestVote, RequestVoteResponse, GlobalStateUpdate},
     DirectiveHeartbeat, DirectiveHeartbeatResponse, DirectiveRequestVote,
-    DirectiveRequestVoteResponse, Error, LocalState, Uuid,
+    DirectiveRequestVoteResponse, Error, LocalState, Uuid, HeldInputJack, DirectiveGlobalStateUpdate, PatchState, HeldOutputJack,
 };
-use heapless::FnvIndexSet;
+use heapless::FnvIndexMap;
 use rand_core::RngCore;
 
 const ELECTION_TIMEOUT_INTERVAL: (i64, i64) = (1500, 3000); // ms
@@ -21,7 +21,7 @@ pub enum Roles {
 
 pub struct LeaderElection<T: RngCore> {
     id: Uuid,
-    seen_hosts: FnvIndexSet<Uuid, MAX_HOSTS>,
+    seen_hosts: FnvIndexMap<Uuid, Option<LocalState>, MAX_HOSTS>,
     rand_source: T,
     local_state: LocalState,
     election_timeout: i64,
@@ -31,11 +31,13 @@ pub struct LeaderElection<T: RngCore> {
     pub role: Roles,
     votes_got: u32,
     pub iteration: u32,
+    last_update: Option<Directive>,
+    last_seen_hosts: Option<usize>,
 }
 
 impl<T: RngCore> LeaderElection<T> {
     pub fn new(id: Uuid, time: i64, mut rand_source: T) -> Self {
-        let seen_hosts = FnvIndexSet::<_, MAX_HOSTS>::new();
+        let seen_hosts = FnvIndexMap::<_, _, MAX_HOSTS>::new();
 
         let election_timeout = (rand_source.next_u32() as i64)
             % (ELECTION_TIMEOUT_INTERVAL.1 - ELECTION_TIMEOUT_INTERVAL.0)
@@ -54,6 +56,8 @@ impl<T: RngCore> LeaderElection<T> {
             role: Roles::FOLLOWER,
             votes_got: 0,
             iteration: 0,
+            last_update: None,
+            last_seen_hosts: Some(0),
         }
     }
 
@@ -86,6 +90,8 @@ impl<T: RngCore> LeaderElection<T> {
         if let Err(_) = self.check_message(&message) {
             return None;
         }
+
+        self.seen_hosts.insert(self.id.clone(), Some(self.local_state.clone())).unwrap();
 
         match message {
             Some(Heartbeat(hb)) => {
@@ -130,7 +136,7 @@ impl<T: RngCore> LeaderElection<T> {
                         self.current_term += 1;
                         self.voted_for = Some(self.id.clone());
                         self.seen_hosts.clear();
-                        self.seen_hosts.insert(self.id.clone()).unwrap();
+                        self.seen_hosts.insert(self.id.clone(), Some(self.local_state.clone())).unwrap();
                         self.votes_got = 1;
                         self.reset_election_timer(time);
                         self.reset_heartbeat_timer(time);
@@ -164,8 +170,35 @@ impl<T: RngCore> LeaderElection<T> {
                     None
                 }
                 Roles::LEADER => {
-                    if self.heartbeat_timer_elapsed(time) {
+                    if let Some(HeartbeatResponse(DirectiveHeartbeatResponse { uuid: id, term: _, success: true, iteration: Some(i), state: Some(s) })) = resp {
+                        if i == self.iteration {
+                            // A timeout value should be added here for modules that go offline
+                            self.seen_hosts.insert(id, Some(s)).unwrap();
+                            // If everyone known checked in, then send update
+                            if Some(self.seen_hosts.len()) == self.last_seen_hosts {
+                                let result = self.check_global_state_update();
+                                self.last_seen_hosts = None;
+                                result
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else if self.heartbeat_timer_elapsed(time) {
+                        // Currently, this sends an update every heartbeat, meaning it could be up
+                        // to 100 ms before a change in the patch status is registered. Future
+                        // mitigations would be to use a third timer for the heartbeat response
+                        // and/or send the state update as soon as all known module have responded.
+                        if self.last_seen_hosts.is_some() {
+                            if let Some(result) = self.check_global_state_update() {
+                                return Some(result);
+                            }
+                        }
                         self.reset_heartbeat_timer(time);
+                        self.last_seen_hosts = Some(self.seen_hosts.len());
+                        self.seen_hosts.clear();
+                        self.seen_hosts.insert(self.id.clone(), Some(self.local_state.clone())).unwrap();
                         self.iteration += 1;
                         Some(Heartbeat(DirectiveHeartbeat {
                             uuid: self.id.clone(),
@@ -183,16 +216,16 @@ impl<T: RngCore> LeaderElection<T> {
     fn check_message(&mut self, message: &Option<Directive>) -> Result<(), Error> {
         let result = match message {
             Some(Heartbeat(m)) => {
-                self.seen_hosts.insert(m.uuid.clone()).is_err() || m.uuid == self.id
+                self.seen_hosts.insert(m.uuid.clone(), None).is_err() || m.uuid == self.id
             }
             Some(HeartbeatResponse(m)) => {
-                self.seen_hosts.insert(m.uuid.clone()).is_err() || m.uuid == self.id
+                self.seen_hosts.insert(m.uuid.clone(), None).is_err() || m.uuid == self.id
             }
             Some(RequestVote(m)) => {
-                self.seen_hosts.insert(m.uuid.clone()).is_err() || m.uuid == self.id
+                self.seen_hosts.insert(m.uuid.clone(), None).is_err() || m.uuid == self.id
             }
             Some(RequestVoteResponse(m)) => {
-                self.seen_hosts.insert(m.uuid.clone()).is_err() || m.uuid == self.id
+                self.seen_hosts.insert(m.uuid.clone(), None).is_err() || m.uuid == self.id
             }
             Some(_) => true,
             None => false,
@@ -201,6 +234,39 @@ impl<T: RngCore> LeaderElection<T> {
             Err(Error::General)
         } else {
             Ok(())
+        }
+    }
+
+    fn check_global_state_update(&mut self) -> Option<Directive> {
+        let mut input_jack = None;
+        let mut output_jack = None;
+        let mut input_jack_count = 0;
+        let mut output_jack_count = 0;
+        for v in self.seen_hosts.values() {
+            if let Some(local_state) = v {
+                if local_state.held_inputs.len() == 1 && input_jack.is_none() {
+                    input_jack = Some(local_state.held_inputs[0].clone());
+                }
+                if local_state.held_outputs.len() == 1 && output_jack.is_none() {
+                    output_jack = Some(local_state.held_outputs[0].clone());
+                }
+                input_jack_count += local_state.held_inputs.len();
+                output_jack_count += local_state.held_outputs.len();
+            }
+        }
+        let update = Some(match (input_jack_count, output_jack_count) {
+            (0, 0) => self.gsu(PatchState::Idle, None, None),
+            (1, 0) => self.gsu(PatchState::PatchEnabled, input_jack, None),
+            (0, 1) => self.gsu(PatchState::PatchEnabled, None, output_jack),
+            (1, 1) => self.gsu(PatchState::PatchToggled, input_jack, output_jack),
+            _ => self.gsu(PatchState::Blocked, None, None)
+        });
+        if update != self.last_update {
+            info!("Sending global update: {:?}", update);
+            self.last_update = update.clone();
+            update
+        } else {
+            None
         }
     }
 
@@ -230,6 +296,15 @@ impl<T: RngCore> LeaderElection<T> {
             term,
             voted_for,
             vote_granted,
+        })
+    }
+
+    fn gsu(&self, patch_state: PatchState, input: Option<HeldInputJack>, output: Option<HeldOutputJack>) -> Directive {
+        GlobalStateUpdate(DirectiveGlobalStateUpdate {
+            uuid: self.id.clone(),
+            patch_state,
+            input,
+            output,
         })
     }
 

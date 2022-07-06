@@ -1,3 +1,8 @@
+/*! Native socket interface.
+
+This module provides communication (via the `Network` trait) using the native socket interface within the host operating system.
+*/
+
 use core::mem::MaybeUninit;
 use core::str::FromStr;
 use ipnet::Ipv4Net;

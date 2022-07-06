@@ -9,7 +9,7 @@ compile_error!("You must select at least one network feature");
 #[macro_use]
 extern crate log;
 
-pub mod leader_election;
+mod leader_election;
 
 #[cfg(feature = "network-native")]
 pub mod socket_native;
@@ -58,7 +58,7 @@ impl Default for AudioPacket {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
 pub enum PatchState {
     Idle,
     PatchEnabled,
@@ -66,97 +66,97 @@ pub enum PatchState {
     Blocked,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct HeldInputJack {
-    pub uuid: Uuid,
-    pub id: JackId,
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct HeldInputJack {
+    uuid: Uuid,
+    id: JackId,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct HeldOutputJack {
-    pub uuid: Uuid,
-    pub id: JackId,
-    pub color: u32,
-    pub addr: String<SW>,
-    pub port: u16,
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct HeldOutputJack {
+    uuid: Uuid,
+    id: JackId,
+    color: u32,
+    addr: String<SW>,
+    port: u16,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
-pub struct LocalState {
-    pub held_inputs: Vec<HeldInputJack, JW>,
-    pub held_outputs: Vec<HeldOutputJack, JW>,
+#[derive(PartialEq, Serialize, Deserialize, Default, Clone, Debug)]
+struct LocalState {
+    held_inputs: Vec<HeldInputJack, JW>,
+    held_outputs: Vec<HeldOutputJack, JW>,
     // Not sure why this fails with a lifetime error without the following line, but otherwise
     // everything parses correctly...
     // make_compile: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct PatchConnection {
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct PatchConnection {
     input_uuid: Uuid,
     input_jack_id: JackId,
     output_uuid: Uuid,
     output_jack_id: JackId,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DirectiveSetInputJack {
-    pub uuid: Uuid,
-    pub source: HeldOutputJack,
-    pub connection: PatchConnection,
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct DirectiveSetInputJack {
+    uuid: Uuid,
+    source: HeldOutputJack,
+    connection: PatchConnection,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DirectiveSetOutputJack {
-    pub uuid: Uuid,
-    pub source: HeldInputJack,
-    pub connection: PatchConnection,
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct DirectiveSetOutputJack {
+    uuid: Uuid,
+    source: HeldInputJack,
+    connection: PatchConnection,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DirectiveHalt {
-    pub uuid: Uuid,
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct DirectiveHalt {
+    uuid: Uuid,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DirectiveHeartbeat {
-    pub uuid: Uuid,
-    pub term: u32,
-    pub iteration: u32,
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct DirectiveHeartbeat {
+    uuid: Uuid,
+    term: u32,
+    iteration: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DirectiveHeartbeatResponse {
-    pub uuid: Uuid,
-    pub term: u32,
-    pub success: bool,
-    pub iteration: Option<u32>,
-    pub state: Option<LocalState>,
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct DirectiveHeartbeatResponse {
+    uuid: Uuid,
+    term: u32,
+    success: bool,
+    iteration: Option<u32>,
+    state: Option<LocalState>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DirectiveRequestVote {
-    pub uuid: Uuid,
-    pub term: u32,
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct DirectiveRequestVote {
+    uuid: Uuid,
+    term: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DirectiveRequestVoteResponse {
-    pub uuid: Uuid,
-    pub term: u32,
-    pub voted_for: Uuid,
-    pub vote_granted: bool,
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct DirectiveRequestVoteResponse {
+    uuid: Uuid,
+    term: u32,
+    voted_for: Uuid,
+    vote_granted: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DirectiveGlobalStateUpdate {
-    pub uuid: Uuid,
-    pub patch_state: PatchState,
-    pub input: Option<HeldInputJack>,
-    pub output: Option<HeldOutputJack>,
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+struct DirectiveGlobalStateUpdate {
+    uuid: Uuid,
+    patch_state: PatchState,
+    input: Option<HeldInputJack>,
+    output: Option<HeldOutputJack>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum Directive {
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+enum Directive {
     SetInputJack(DirectiveSetInputJack),
     SetOutputJack(DirectiveSetOutputJack),
     Halt(DirectiveHalt),
@@ -176,25 +176,39 @@ pub enum Error {
     Parse,
 }
 
+/// General backend communication control.
+/// 
+/// Since the backend networking can be changed to run on a host operating system or on a full
+/// network stack, this trait defines what methods are needed to be implemented to accomplish this.
 pub trait Network {
-    // Update internal state and send/recv packets, if needed
+    /// Update internal state and send/recv packets, if needed
     fn poll(&mut self, _time: i64) -> Result<bool, Error> {
         Ok(true)
     }
-    // Check if socket is ready for sending
+    /// Check if socket is ready for sending
     fn can_send(&mut self) -> bool;
-    // Get bytes from the directive multicast
+    /// Get bytes from the directive multicast
     fn recv_directive(&mut self, buf: &mut [u8]) -> Result<usize, Error>;
-    // Output bytes on the directive multicast
+    /// Output bytes on the directive multicast
     fn send_directive(&mut self, buf: &[u8]) -> Result<(), Error>;
-    // Connect an input jack to an output endpoint
+    /// Connect an input jack to an output endpoint
     fn jack_connect(&mut self, jack_id: usize, addr: &str, time: i64) -> Result<(), Error>;
-    // Get audio data for a particular jack
+    /// Get audio data for a particular jack
     fn jack_recv(&mut self, jack_id: usize, buf: &mut [u8]) -> Result<usize, Error>;
-    // Send audio data for a particular jack
+    /// Send audio data for a particular jack
     fn jack_send(&mut self, jack_id: usize, buf: &[u8]) -> Result<(), Error>;
 }
 
+/// Module communication and state handling.
+/// 
+/// `Module` is responsible for handling communication between other modules on the same network on
+/// within the same process (depending on configuration), as well as manages the current state of
+/// patching and the audio packet reception and tranmission.
+/// 
+/// Since this portion is platform independent, with `no-std` and no allocation, users of this crate
+/// are responsible for providing the current time (in milliseconds from an arbitrary start), a
+/// source of random source, and `poll`-ing the module at regular intervals to perform network
+/// updates.
 pub struct Module<T: Network, R: RngCore> {
     interface: T,
     leader_election: LeaderElection<R>,
@@ -211,13 +225,17 @@ impl<T: Network, R: RngCore> Module<T, R> {
 
     pub fn poll(&mut self, time: i64) -> Result<(), Error> {
         self.interface.poll(time)?;
-        while let Ok(d) = self.recv_directive() {
-            if let Some(resp) = self.leader_election.poll(Some(d), time) {
+        if self.can_send() {
+            while let Ok(d) = self.recv_directive() {
+                if let Some(resp) = self.leader_election.poll(Some(d), time) {
+                    self.send_directive(&resp)?;
+                }
+            }
+            if let Some(resp) = self.leader_election.poll(None, time) {
                 self.send_directive(&resp)?;
             }
-        }
-        if let Some(resp) = self.leader_election.poll(None, time) {
-            self.send_directive(&resp)?;
+        } else {
+            self.leader_election.reset(time);
         }
         Ok(())
     }
@@ -226,12 +244,12 @@ impl<T: Network, R: RngCore> Module<T, R> {
         self.interface.can_send()
     }
 
-    pub fn recv_directive(&mut self) -> Result<Directive, Error> {
+    fn recv_directive(&mut self) -> Result<Directive, Error> {
         let mut buf = [0; 2048];
         match self.interface.recv_directive(&mut buf) {
             Ok(size) => match serde_json_core::from_slice(&buf[0..size]) {
                 Ok((out, _)) => {
-                    info!("<= {:?}", out);
+                    trace!("<= {:?}", out);
                     Ok(out)
                 }
                 Err(e) => {
@@ -243,8 +261,8 @@ impl<T: Network, R: RngCore> Module<T, R> {
         }
     }
 
-    pub fn send_directive(&mut self, directive: &Directive) -> Result<(), Error> {
-        info!("=> {:?}", directive);
+    fn send_directive(&mut self, directive: &Directive) -> Result<(), Error> {
+        trace!("=> {:?}", directive);
         let mut buf = [0; 2048];
         match serde_json_core::to_slice(directive, &mut buf) {
             Ok(len) => self.interface.send_directive(&buf[0..len]),
@@ -267,6 +285,15 @@ impl<T: Network, R: RngCore> Module<T, R> {
 
     pub fn jack_send(&mut self, jack_id: usize, data: &AudioPacket) -> Result<(), Error> {
         self.interface.jack_send(jack_id, data.as_bytes())
+    }
+
+    pub fn send_halt(&mut self) {
+        let out = Directive::Halt(DirectiveHalt {
+            uuid: "GLOBAL".into(),
+        });
+        if let Err(e) = self.send_directive(&out) {
+            info!("Halt command failed {:?}", e);
+        }
     }
 }
 
