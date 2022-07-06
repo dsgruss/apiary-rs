@@ -1,8 +1,11 @@
 use crate::{
     Directive,
-    Directive::{Heartbeat, HeartbeatResponse, RequestVote, RequestVoteResponse, GlobalStateUpdate},
-    DirectiveHeartbeat, DirectiveHeartbeatResponse, DirectiveRequestVote,
-    DirectiveRequestVoteResponse, Error, LocalState, Uuid, HeldInputJack, DirectiveGlobalStateUpdate, PatchState, HeldOutputJack,
+    Directive::{
+        GlobalStateUpdate, Heartbeat, HeartbeatResponse, RequestVote, RequestVoteResponse,
+    },
+    DirectiveGlobalStateUpdate, DirectiveHeartbeat, DirectiveHeartbeatResponse,
+    DirectiveRequestVote, DirectiveRequestVoteResponse, Error, HeldInputJack, HeldOutputJack,
+    LocalState, PatchState, Uuid,
 };
 use heapless::FnvIndexMap;
 use rand_core::RngCore;
@@ -91,7 +94,9 @@ impl<T: RngCore> LeaderElection<T> {
             return None;
         }
 
-        self.seen_hosts.insert(self.id.clone(), Some(self.local_state.clone())).unwrap();
+        self.seen_hosts
+            .insert(self.id.clone(), Some(self.local_state.clone()))
+            .unwrap();
 
         match message {
             Some(Heartbeat(hb)) => {
@@ -136,7 +141,9 @@ impl<T: RngCore> LeaderElection<T> {
                         self.current_term += 1;
                         self.voted_for = Some(self.id.clone());
                         self.seen_hosts.clear();
-                        self.seen_hosts.insert(self.id.clone(), Some(self.local_state.clone())).unwrap();
+                        self.seen_hosts
+                            .insert(self.id.clone(), Some(self.local_state.clone()))
+                            .unwrap();
                         self.votes_got = 1;
                         self.reset_election_timer(time);
                         self.reset_heartbeat_timer(time);
@@ -170,7 +177,14 @@ impl<T: RngCore> LeaderElection<T> {
                     None
                 }
                 Roles::LEADER => {
-                    if let Some(HeartbeatResponse(DirectiveHeartbeatResponse { uuid: id, term: _, success: true, iteration: Some(i), state: Some(s) })) = resp {
+                    if let Some(HeartbeatResponse(DirectiveHeartbeatResponse {
+                        uuid: id,
+                        term: _,
+                        success: true,
+                        iteration: Some(i),
+                        state: Some(s),
+                    })) = resp
+                    {
                         if i == self.iteration {
                             // A timeout value should be added here for modules that go offline
                             self.seen_hosts.insert(id, Some(s)).unwrap();
@@ -198,7 +212,9 @@ impl<T: RngCore> LeaderElection<T> {
                         self.reset_heartbeat_timer(time);
                         self.last_seen_hosts = Some(self.seen_hosts.len());
                         self.seen_hosts.clear();
-                        self.seen_hosts.insert(self.id.clone(), Some(self.local_state.clone())).unwrap();
+                        self.seen_hosts
+                            .insert(self.id.clone(), Some(self.local_state.clone()))
+                            .unwrap();
                         self.iteration += 1;
                         Some(Heartbeat(DirectiveHeartbeat {
                             uuid: self.id.clone(),
@@ -259,7 +275,7 @@ impl<T: RngCore> LeaderElection<T> {
             (1, 0) => self.gsu(PatchState::PatchEnabled, input_jack, None),
             (0, 1) => self.gsu(PatchState::PatchEnabled, None, output_jack),
             (1, 1) => self.gsu(PatchState::PatchToggled, input_jack, output_jack),
-            _ => self.gsu(PatchState::Blocked, None, None)
+            _ => self.gsu(PatchState::Blocked, None, None),
         });
         if update != self.last_update {
             info!("Sending global update: {:?}", update);
@@ -299,7 +315,12 @@ impl<T: RngCore> LeaderElection<T> {
         })
     }
 
-    fn gsu(&self, patch_state: PatchState, input: Option<HeldInputJack>, output: Option<HeldOutputJack>) -> Directive {
+    fn gsu(
+        &self,
+        patch_state: PatchState,
+        input: Option<HeldInputJack>,
+        output: Option<HeldOutputJack>,
+    ) -> Directive {
         GlobalStateUpdate(DirectiveGlobalStateUpdate {
             uuid: self.id.clone(),
             patch_state,

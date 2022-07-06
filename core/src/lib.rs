@@ -177,7 +177,7 @@ pub enum Error {
 }
 
 /// General backend communication control.
-/// 
+///
 /// Since the backend networking can be changed to run on a host operating system or on a full
 /// network stack, this trait defines what methods are needed to be implemented to accomplish this.
 pub trait Network {
@@ -200,11 +200,11 @@ pub trait Network {
 }
 
 /// Module communication and state handling.
-/// 
+///
 /// `Module` is responsible for handling communication between other modules on the same network on
 /// within the same process (depending on configuration), as well as manages the current state of
 /// patching and the audio packet reception and tranmission.
-/// 
+///
 /// Since this portion is platform independent, with `no-std` and no allocation, users of this crate
 /// are responsible for providing the current time (in milliseconds from an arbitrary start), a
 /// source of random source, and `poll`-ing the module at regular intervals to perform network
