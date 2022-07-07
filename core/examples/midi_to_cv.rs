@@ -1,4 +1,4 @@
-use apiary_core::{socket_native::NativeInterface, Module};
+use apiary_core::{socket_native::NativeInterface, Module, CHANNELS};
 use eframe::egui;
 use midir::{MidiInput, MidiInputConnection};
 use std::{
@@ -21,45 +21,45 @@ pub struct MidiToCv {
 
 #[derive(Debug)]
 enum MidiMessage {
-    NoteOn(u8, u8),
-    NoteOff(u8, u8),
+    NoteOn(u8, u8, u8),
+    NoteOff(u8, u8, u8),
     Unimplemented,
+}
+
+#[derive(Copy, Clone, Default, Debug)]
+struct Voice {
+    note: u8,
+    on: bool,
+    timestamp: u128,
 }
 
 impl MidiToCv {
     pub fn new(name: String) -> Self {
-        let (tx, rx) = channel();
+        let (midi_tx, midi_rx) = channel();
 
         let midi_check = MidiInput::new("midir port enumerator").unwrap();
         info!("Opening all MIDI inputs by default");
+
         let in_ports = midi_check.ports();
         let mut midi_connections = vec![];
-        for (i, p) in in_ports.iter().enumerate() {
-            info!("Opening {:?}", midi_check.port_name(p).unwrap());
+        for (i, port) in in_ports.iter().enumerate() {
+            info!("Opening {:?}", midi_check.port_name(port).unwrap());
             let midi_in = MidiInput::new(&format!("midir input {}", i)).unwrap();
-            let port_tx = tx.clone();
+            let port_tx = midi_tx.clone();
+            let port_name = "midir-read-input";
+
             let conn_in = midi_in
                 .connect(
-                    p,
-                    "midir-read-input",
-                    move |stamp, message, _| {
-                        info!("{}: {:?} (len = {})", stamp, message, message.len());
-                        let result = if message.len() == 3 && message[0] == 144 {
-                            MidiMessage::NoteOn(message[1], message[2])
-                        } else if message.len() == 3 && message[0] == 128 {
-                            MidiMessage::NoteOff(message[1], message[2])
-                        } else {
-                            MidiMessage::Unimplemented
-                        };
-                        port_tx.send(result).unwrap();
-                    },
+                    port,
+                    port_name,
+                    move |_, msg, _| Self::midi_dispatch(msg, &port_tx),
                     (),
                 )
                 .unwrap();
             midi_connections.push(conn_in);
         }
 
-        let (tx2, rx2): (Sender<(usize, bool)>, Receiver<(usize, bool)>) = channel();
+        let (ui_tx, ui_rx): (Sender<(usize, bool)>, Receiver<(usize, bool)>) = channel();
 
         thread::spawn(move || {
             let mut module = Module::new(
@@ -67,20 +67,48 @@ impl MidiToCv {
                 rand::thread_rng(),
                 "Midi_to_cv".into(),
                 0,
-                0,
-                3,
-            );
+            )
+            .jack_count(0, 3);
             let start = Instant::now();
             let mut time = 0;
+            let mut voices: [Voice; CHANNELS] = [Default::default(); CHANNELS];
 
             'outer: loop {
                 while time < start.elapsed().as_millis() {
-                    match rx.try_recv() {
-                        Ok(message) => info!("{:?}", message),
+                    match midi_rx.try_recv() {
+                        Ok(message) => {
+                            info!("{:?}", message);
+                            match message {
+                                MidiMessage::NoteOff(_, note, _) => {
+                                    for v in voices.iter_mut().filter(|v| v.note == note && v.on) {
+                                        v.on = false;
+                                        v.timestamp = time;
+                                    }
+                                }
+                                MidiMessage::NoteOn(_, note, _) => {
+                                    // First, see if we can take the oldest voice that has been
+                                    // released. Otherwise, steal a voice. In this case, take the
+                                    // oldest note played. We also have a choice of whether to just
+                                    // change the pitch (done here), or to shut the note off and
+                                    // retrigger.
+                                    if let Some(v) =
+                                        voices.iter_mut().min_by_key(|v| (v.on, v.timestamp))
+                                    {
+                                        v.note = note;
+                                        v.on = true;
+                                        v.timestamp = time;
+                                    }
+                                }
+                                _ => {}
+                            }
+                            for v in voices {
+                                info!("{:?}", v);
+                            }
+                        }
                         Err(TryRecvError::Empty) => {}
                         Err(TryRecvError::Disconnected) => break 'outer,
                     }
-                    match rx2.try_recv() {
+                    match ui_rx.try_recv() {
                         Ok(message) => {
                             info!("{:?}", message);
                             if let Err(e) = module.set_output_patch_enabled(message.0, message.1) {
@@ -104,8 +132,21 @@ impl MidiToCv {
             note_checked: false,
             gate_checked: false,
             mdwh_checked: false,
-            tx: tx2,
+            tx: ui_tx,
         }
+    }
+
+    fn midi_dispatch(message: &[u8], tx: &Sender<MidiMessage>) {
+        let result = if message.len() != 3 {
+            MidiMessage::Unimplemented
+        } else {
+            match (message[0] >> 4, message[0] & 0b1111) {
+                (0b1001, ch) => MidiMessage::NoteOn(ch, message[1], message[2]),
+                (0b1000, ch) => MidiMessage::NoteOff(ch, message[1], message[2]),
+                _ => MidiMessage::Unimplemented,
+            }
+        };
+        tx.send(result).unwrap();
     }
 }
 

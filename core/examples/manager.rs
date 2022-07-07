@@ -34,8 +34,6 @@ fn main() {
             rand::thread_rng(),
             "Manager".into(),
             0,
-            0,
-            0,
         );
         let start = Instant::now();
         let mut time = 0;

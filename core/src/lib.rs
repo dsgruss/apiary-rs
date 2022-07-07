@@ -23,7 +23,7 @@ use rand_core::RngCore;
 use serde::{Deserialize, Serialize};
 use zerocopy::{AsBytes, FromBytes};
 
-const CHANNELS: usize = 8;
+pub const CHANNELS: usize = 8;
 const BLOCK_SIZE: usize = 48;
 type SampleType = i16;
 
@@ -222,24 +222,23 @@ pub struct Module<T: Network, R: RngCore> {
 }
 
 impl<T: Network, R: RngCore> Module<T, R> {
-    pub fn new(
-        interface: T,
-        rand_source: R,
-        id: Uuid,
-        time: i64,
-        input_count: usize,
-        output_count: usize,
-    ) -> Self {
+    pub fn new(interface: T, rand_source: R, id: Uuid, time: i64) -> Self {
         let leader_election = LeaderElection::new(id.clone(), time, rand_source);
         Module {
             uuid: id,
             interface,
             leader_election,
-            input_count,
-            output_count,
+            input_count: 0,
+            output_count: 0,
             input_patch_enabled: 0,
             output_patch_enabled: 0,
         }
+    }
+
+    pub fn jack_count(mut self, input_count: usize, output_count: usize) -> Self {
+        self.input_count = input_count;
+        self.output_count = output_count;
+        self
     }
 
     pub fn poll(&mut self, time: i64) -> Result<(), Error> {
