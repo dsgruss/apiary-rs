@@ -45,7 +45,7 @@ where
                             panic!("Audio channel disconnected")
                         }
                     };
-                    data[i] = sample;
+                    data[2 * i] = sample;
                     data[2 * i + 1] = sample;
                 }
             },

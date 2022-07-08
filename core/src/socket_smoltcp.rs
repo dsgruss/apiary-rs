@@ -237,31 +237,26 @@ where
         }
     }
 
-    fn jack_connect(&mut self, _jack_id: usize, addr: &str, time: i64) -> Result<(), Error> {
-        match Ipv4Address::from_str(addr) {
-            Err(_) => Err(Error::Network),
-            Ok(address) => {
-                let t = Instant::from_millis(time);
-                let ep = IpEndpoint::new(IpAddress::Ipv4(address), JACK_PORT);
-                if let Some(old_ep) = self.input_jack_endpoint {
-                    if let Err(_) = self.iface.leave_multicast_group(old_ep.addr, t) {
-                        return Err(Error::Network);
-                    }
-                    info!("Input jack 0: Leaving group");
-                }
-                info!("Input jack 0: Joining group and opening socket");
-                if let Err(_) = self.iface.join_multicast_group(ep.addr, t) {
-                    return Err(Error::Network);
-                }
-                self.input_jack_endpoint = Some(ep);
-                let jack_socket = self.iface.get_socket::<UdpSocket>(self.input_jack_handle);
-                if jack_socket.is_open() {
-                    jack_socket.close();
-                }
-                jack_socket.bind(ep)
+    fn jack_connect(&mut self, _jack_id: usize, addr: [u8; 4], time: i64) -> Result<(), Error> {
+        let address = Ipv4Address::from_bytes(&addr);
+        let t = Instant::from_millis(time);
+        let ep = IpEndpoint::new(IpAddress::Ipv4(address), JACK_PORT);
+        if let Some(old_ep) = self.input_jack_endpoint {
+            if let Err(_) = self.iface.leave_multicast_group(old_ep.addr, t) {
+                return Err(Error::Network);
             }
-            .or(Err(Error::Network)),
+            info!("Input jack 0: Leaving group");
         }
+        info!("Input jack 0: Joining group and opening socket");
+        if let Err(_) = self.iface.join_multicast_group(ep.addr, t) {
+            return Err(Error::Network);
+        }
+        self.input_jack_endpoint = Some(ep);
+        let jack_socket = self.iface.get_socket::<UdpSocket>(self.input_jack_handle);
+        if jack_socket.is_open() {
+            jack_socket.close();
+        }
+        jack_socket.bind(ep).or(Err(Error::Network))
     }
 
     fn jack_recv(&mut self, _jack_id: usize, buf: &mut [u8]) -> Result<usize, Error> {

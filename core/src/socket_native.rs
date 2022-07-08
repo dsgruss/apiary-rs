@@ -135,7 +135,7 @@ impl Network for NativeInterface {
         }
     }
 
-    fn jack_connect(&mut self, jack_id: usize, addr: &str, _time: i64) -> Result<(), Error> {
+    fn jack_connect(&mut self, jack_id: usize, addr: [u8; 4], _time: i64) -> Result<(), Error> {
         if jack_id >= self.input_sockets.len() {
             return Err(Error::InvalidJackId);
         }
@@ -145,7 +145,7 @@ impl Network for NativeInterface {
             }
             None => {}
         }
-        let address = Ipv4Addr::from_str(addr)?;
+        let address = addr.into();
         self.input_sockets[jack_id].join_multicast_v4(&address, &self.local_addr)?;
         self.input_groups[jack_id] = Some(address);
         Ok(())

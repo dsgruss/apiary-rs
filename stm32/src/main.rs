@@ -191,8 +191,8 @@ fn main() -> ! {
         send_accum += timer.now().ticks() - send_start;
 
         let adc_start = timer.now().ticks();
-        sample = adc.convert(&pa0, SampleTime::Cycles_84);
         for frame in &mut packet.data {
+            sample = adc.convert(&pa0, SampleTime::Cycles_84);
             for v in &mut frame.data {
                 *v = sample as i16;
             }

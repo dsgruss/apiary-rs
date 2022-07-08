@@ -192,7 +192,7 @@ pub trait Network {
     /// Output bytes on the directive multicast
     fn send_directive(&mut self, buf: &[u8]) -> Result<(), Error>;
     /// Connect an input jack to an output endpoint
-    fn jack_connect(&mut self, jack_id: usize, addr: &str, time: i64) -> Result<(), Error>;
+    fn jack_connect(&mut self, jack_id: usize, addr: [u8; 4], time: i64) -> Result<(), Error>;
     /// Get audio data for a particular jack
     fn jack_recv(&mut self, jack_id: usize, buf: &mut [u8]) -> Result<usize, Error>;
     /// Send audio data for a particular jack
@@ -242,8 +242,23 @@ impl<T: Network, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> 
         self.interface.poll(time)?;
         if self.can_send() {
             while let Ok(d) = self.recv_directive() {
-                if let Some(resp) = self.leader_election.poll(Some(d), time) {
-                    self.send_directive(&resp)?;
+                match d {
+                    Directive::GlobalStateUpdate(gsu) => {
+                        if let Some(input) = gsu.input {
+                            if input.uuid == self.uuid
+                                && gsu.patch_state == PatchState::PatchToggled
+                            {
+                                if let Some(output) = gsu.output {
+                                    self.toggle_input_jack(input.id as usize, output, time);
+                                }
+                            }
+                        }
+                    }
+                    d => {
+                        if let Some(resp) = self.leader_election.poll(Some(d), time) {
+                            self.send_directive(&resp)?;
+                        }
+                    }
                 }
             }
             if let Some(resp) = self.leader_election.poll(None, time) {
@@ -295,7 +310,7 @@ impl<T: Network, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> 
         }
     }
 
-    pub fn jack_connect(&mut self, jack_id: usize, addr: &str, time: i64) -> Result<(), Error> {
+    pub fn jack_connect(&mut self, jack_id: usize, addr: [u8; 4], time: i64) -> Result<(), Error> {
         self.interface.jack_connect(jack_id, addr, time)
     }
 
@@ -375,6 +390,13 @@ impl<T: Network, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> 
         }
         self.leader_election.update_local_state(local_state);
         Ok(())
+    }
+
+    fn toggle_input_jack(&mut self, jack_id: usize, output: HeldOutputJack, time: i64) {
+        // For now this is just a switch rather than a toggle
+        if let Err(e) = self.interface.jack_connect(jack_id, output.addr, time) {
+            info!("Jack connection error: {:?}", e);
+        }
     }
 }
 

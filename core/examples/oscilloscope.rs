@@ -17,14 +17,14 @@ use crate::common::DisplayModule;
 pub struct Oscilloscope {
     width: f32,
     open: bool,
-    tx: Sender<String>,
-    address: String,
+    tx: Sender<bool>,
+    input_checked: bool,
     data: Arc<Mutex<[Vec<Value>; CHANNELS]>>,
 }
 
 impl Oscilloscope {
     pub fn new() -> Self {
-        let (ui_tx, ui_rx): (Sender<String>, Receiver<String>) = channel();
+        let (ui_tx, ui_rx): (Sender<bool>, Receiver<bool>) = channel();
         let data: Arc<Mutex<[Vec<Value>; CHANNELS]>> = Default::default();
         let thread_data = data.clone();
 
@@ -41,9 +41,8 @@ impl Oscilloscope {
             'outer: loop {
                 while time < start.elapsed().as_millis() as i64 {
                     match ui_rx.try_recv() {
-                        Ok(message) => {
-                            info!("Connecting jack to {:?}", message);
-                            if let Err(e) = module.jack_connect(0, &message, time) {
+                        Ok(checked) => {
+                            if let Err(e) = module.set_input_patch_enabled(0, checked) {
                                 info!("Error in connecting jack: {:?}", e);
                             }
                         }
@@ -77,7 +76,7 @@ impl Oscilloscope {
             width: 25.0,
             open: true,
             tx: ui_tx,
-            address: "".to_owned(),
+            input_checked: false,
             data: data,
         }
     }
@@ -107,13 +106,8 @@ impl DisplayModule for Oscilloscope {
                 }
             });
 
-        ui.horizontal(|ui| {
-            ui.label("Multicast Address: ");
-            ui.text_edit_singleline(&mut self.address);
-            if ui.button("Connect").clicked() {
-                self.tx.send(self.address.clone()).unwrap();
-            }
-        });
-        ui.add_space(20.0);
+        if ui.checkbox(&mut self.input_checked, "Input").changed() {
+            self.tx.send(self.input_checked).unwrap();
+        }
     }
 }

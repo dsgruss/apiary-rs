@@ -10,8 +10,8 @@ use crate::{
 use heapless::FnvIndexMap;
 use rand_core::RngCore;
 
-const ELECTION_TIMEOUT_INTERVAL: (i64, i64) = (1500, 3000); // ms
-const HEARTBEAT_INTERVAL: i64 = 500; // ms
+const ELECTION_TIMEOUT_INTERVAL: (i64, i64) = (150, 300); // ms
+const HEARTBEAT_INTERVAL: i64 = 50; // ms
 const MAX_HOSTS: usize = 16;
 
 #[derive(PartialEq, Debug)]
