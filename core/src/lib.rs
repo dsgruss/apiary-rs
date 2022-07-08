@@ -236,7 +236,9 @@ impl<T: Network, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> 
     }
 
     pub fn poll<F>(&mut self, time: i64, f: F) -> Result<(), Error>
-    where F: FnOnce(&[AudioPacket; I], &mut [AudioPacket; O]) {
+    where
+        F: FnOnce(&[AudioPacket; I], &mut [AudioPacket; O]),
+    {
         self.interface.poll(time)?;
         if self.can_send() {
             while let Ok(d) = self.recv_directive() {

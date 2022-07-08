@@ -126,11 +126,13 @@ impl MidiToCv {
                         }
                     }
                     let pkt = AudioPacket {
-                                data: [frame; BLOCK_SIZE],
-                            };
-                    module.poll(time, |_, output| {
-                        output[1] = pkt;
-                    }).unwrap();
+                        data: [frame; BLOCK_SIZE],
+                    };
+                    module
+                        .poll(time, |_, output| {
+                            output[1] = pkt;
+                        })
+                        .unwrap();
                     time += 1;
                 }
                 thread::sleep(Duration::from_millis(0));

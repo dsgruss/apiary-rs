@@ -52,16 +52,16 @@ impl Oscilloscope {
                     }
 
                     let mut pkt = Default::default();
-                    module.poll(time, |input, _| {
-                        pkt = input[0];
-                    }).unwrap();
+                    module
+                        .poll(time, |input, _| {
+                            pkt = input[0];
+                        })
+                        .unwrap();
                     if time % 10 == 0 {
                         let mut data = thread_data.lock().unwrap();
                         for i in 0..CHANNELS {
-                            data[i].push(Value::new(
-                                time as f64 / 1000.0,
-                                pkt.data[0].data[i] as f64,
-                            ));
+                            data[i]
+                                .push(Value::new(time as f64 / 1000.0, pkt.data[0].data[i] as f64));
                             if data[i].len() > 400 {
                                 data[i].remove(0);
                             }
