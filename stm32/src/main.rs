@@ -63,7 +63,7 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger::new();
 
-use apiary_core::{socket_smoltcp::SmoltcpInterface, AudioPacket, Error, Module, Uuid};
+use apiary_core::{socket_smoltcp::SmoltcpInterface, AudioPacket, Module, Uuid};
 
 use apiary::{Ui, UiPins};
 
@@ -135,13 +135,11 @@ fn main() -> ! {
     eth_dma.enable_interrupt();
 
     let mut storage = Default::default();
-    let mut module = Module::new(
+    let mut module: Module<_, _, 1, 1> = Module::new(
         SmoltcpInterface::new(&mut eth_dma, &mut storage),
         rand_source,
         uuid.clone(),
         0,
-        1,
-        1,
     );
 
     info!("Sockets created");
@@ -182,25 +180,14 @@ fn main() -> ! {
         ui_accum += timer.now().ticks() - ui_start;
 
         let poll_start = timer.now().ticks();
-        if let Err(e) = module.poll(time) {
+        if let Err(e) = module.poll(time, |_, output| {
+            output[0] = packet;
+        }) {
             info!("Data send error: {:?}", e);
         }
         poll_accum += timer.now().ticks() - poll_start;
 
         let send_start = timer.now().ticks();
-        if module.can_send() {
-            match module.jack_recv(0) {
-                Ok(d) => {
-                    if let Err(e) = module.jack_send(0, &d) {
-                        info!("Data send error: {:?}", e);
-                    }
-                }
-                Err(Error::NoData) => {}
-                Err(e) => {
-                    info!("Data recv error: {:?}", e);
-                }
-            }
-        }
         send_accum += timer.now().ticks() - send_start;
 
         let adc_start = timer.now().ticks();
