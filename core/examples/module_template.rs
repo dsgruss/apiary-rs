@@ -66,6 +66,5 @@ impl DisplayModule for MODULENAME {
         ui.heading("MODULENAME");
         ui.add_space(20.0);
         // Add ui and message transmission
-        ui.allocate_space(ui.available_size());
     }
 }

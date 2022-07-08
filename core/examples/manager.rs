@@ -109,11 +109,18 @@ impl eframe::App for Manager {
                     }
                     ui.add_space(20.0);
                     if ui.button("Midi to CV").clicked() {
-                        self.windows.push((self.window_count, Box::new( MidiToCv::new())));
+                        self.windows
+                            .push((self.window_count, Box::new(MidiToCv::new())));
+                        self.window_count += 1;
+                    }
+                    if ui.button("Audio Interface").clicked() {
+                        self.windows
+                            .push((self.window_count, Box::new(AudioInterface::new())));
                         self.window_count += 1;
                     }
                     if ui.button("Oscilloscope").clicked() {
-                        self.windows.push((self.window_count, Box::new(Oscilloscope::new())));
+                        self.windows
+                            .push((self.window_count, Box::new(Oscilloscope::new())));
                         self.window_count += 1;
                     }
                     ui.add_space(100.0);
@@ -126,8 +133,8 @@ impl eframe::App for Manager {
             ui.horizontal(|ui| {
                 for w in &mut self.windows {
                     egui::Area::new(format!("id{:?}", w.0))
-                    // egui::containers::Resize::default()
-                    //    .fixed_size((15.0 * w.width(), 450.0))
+                        // egui::containers::Resize::default()
+                        //    .fixed_size((15.0 * w.width(), 450.0))
                         .show(ctx, |ui| {
                             ui.vertical(|ui| {
                                 egui::containers::Frame::none()
