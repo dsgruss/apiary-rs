@@ -114,5 +114,6 @@ impl DisplayModule for Oscilloscope {
                 self.tx.send(self.address.clone()).unwrap();
             }
         });
+        ui.add_space(20.0);
     }
 }
