@@ -32,7 +32,7 @@ enum MidiMessage {
 struct Voice {
     note: u8,
     on: bool,
-    timestamp: u128,
+    timestamp: i64,
 }
 
 impl MidiToCv {
@@ -64,19 +64,18 @@ impl MidiToCv {
         let (ui_tx, ui_rx): (Sender<(usize, bool)>, Receiver<(usize, bool)>) = channel();
 
         thread::spawn(move || {
-            let mut module = Module::new(
+            let mut module: Module<_, _, 0, 3> = Module::new(
                 NativeInterface::new(0, 3).unwrap(),
                 rand::thread_rng(),
                 "Midi_to_cv".into(),
                 0,
-            )
-            .jack_count(0, 3);
+            );
             let start = Instant::now();
-            let mut time = 0;
+            let mut time: i64 = 0;
             let mut voices: [Voice; CHANNELS] = [Default::default(); CHANNELS];
 
             'outer: loop {
-                while time < start.elapsed().as_millis() {
+                while time < start.elapsed().as_millis() as i64 {
                     match midi_rx.try_recv() {
                         Ok(message) => {
                             info!("{:?}", message);
@@ -126,15 +125,12 @@ impl MidiToCv {
                             frame.data[i] = 16000;
                         }
                     }
-                    module
-                        .jack_send(
-                            1,
-                            &AudioPacket {
+                    let pkt = AudioPacket {
                                 data: [frame; BLOCK_SIZE],
-                            },
-                        )
-                        .unwrap();
-                    module.poll(start.elapsed().as_millis() as i64).unwrap();
+                            };
+                    module.poll(time, |_, output| {
+                        output[1] = pkt;
+                    }).unwrap();
                     time += 1;
                 }
                 thread::sleep(Duration::from_millis(0));

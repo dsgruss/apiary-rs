@@ -32,18 +32,18 @@ fn main() {
     let (tx, rx) = channel();
 
     thread::spawn(move || {
-        let mut module = Module::new(
+        let mut module: Module<_, _, 0, 0> = Module::new(
             NativeInterface::new(0, 0).unwrap(),
             rand::thread_rng(),
             "Manager".into(),
             0,
         );
         let start = Instant::now();
-        let mut time = 0;
+        let mut time: i64 = 0;
 
         'outer: loop {
-            while time < start.elapsed().as_millis() {
-                module.poll(start.elapsed().as_millis() as i64).unwrap();
+            while time < start.elapsed().as_millis() as i64 {
+                module.poll(time, |_, _| {}).unwrap();
                 match rx.try_recv() {
                     Ok(true) => module.send_halt(),
                     Ok(false) => {}

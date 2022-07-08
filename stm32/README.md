@@ -31,3 +31,5 @@ https://www.st.com/resource/en/reference_manual/rm0410-stm32f76xxx-and-stm32f77x
 [ ]: Look into https://docs.rs/ndarray/latest/ndarray/index.html or https://www.nalgebra.org/docs/
      for array structuring
 [ ]: DMA for ADC running
+[ ]: Bandlimit to avoid aliasing: https://ccrma.stanford.edu/~stilti/papers/blit.pdf
+[ ]: Reduce number of copying on AudioPacket to the minimal amount

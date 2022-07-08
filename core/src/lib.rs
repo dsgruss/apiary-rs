@@ -44,7 +44,7 @@ pub struct AudioFrame {
     pub data: [SampleType; CHANNELS],
 }
 
-#[derive(AsBytes, FromBytes, Debug)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
 #[repr(C)]
 pub struct AudioPacket {
     pub data: [AudioFrame; BLOCK_SIZE],
@@ -211,37 +211,32 @@ pub trait Network {
 /// are responsible for providing the current time (in milliseconds from an arbitrary start), a
 /// source of random source, and `poll`-ing the module at regular intervals to perform network
 /// updates.
-pub struct Module<T: Network, R: RngCore> {
+pub struct Module<T: Network, R: RngCore, const I: usize, const O: usize> {
     uuid: Uuid,
     interface: T,
     leader_election: LeaderElection<R>,
-    input_count: usize,
-    output_count: usize,
     input_patch_enabled: u16,
     output_patch_enabled: u16,
+    input_buffer: [AudioPacket; I],
+    output_buffer: [AudioPacket; O],
 }
 
-impl<T: Network, R: RngCore> Module<T, R> {
+impl<T: Network, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> {
     pub fn new(interface: T, rand_source: R, id: Uuid, time: i64) -> Self {
         let leader_election = LeaderElection::new(id.clone(), time, rand_source);
         Module {
             uuid: id,
             interface,
             leader_election,
-            input_count: 0,
-            output_count: 0,
             input_patch_enabled: 0,
             output_patch_enabled: 0,
+            input_buffer: [Default::default(); I],
+            output_buffer: [Default::default(); O],
         }
     }
 
-    pub fn jack_count(mut self, input_count: usize, output_count: usize) -> Self {
-        self.input_count = input_count;
-        self.output_count = output_count;
-        self
-    }
-
-    pub fn poll(&mut self, time: i64) -> Result<(), Error> {
+    pub fn poll<F>(&mut self, time: i64, f: F) -> Result<(), Error>
+    where F: FnOnce(&[AudioPacket; I], &mut [AudioPacket; O]) {
         self.interface.poll(time)?;
         if self.can_send() {
             while let Ok(d) = self.recv_directive() {
@@ -251,6 +246,16 @@ impl<T: Network, R: RngCore> Module<T, R> {
             }
             if let Some(resp) = self.leader_election.poll(None, time) {
                 self.send_directive(&resp)?;
+            }
+            for i in 0..I {
+                while let Ok(a) = self.jack_recv(i) {
+                    self.input_buffer[i] = a;
+                }
+            }
+            f(&self.input_buffer, &mut self.output_buffer);
+            for i in 0..O {
+                let buf = self.output_buffer[i];
+                self.jack_send(i, &buf).unwrap();
             }
         } else {
             self.leader_election.reset(time);
@@ -315,7 +320,7 @@ impl<T: Network, R: RngCore> Module<T, R> {
     }
 
     pub fn set_input_patch_enabled(&mut self, jack_id: usize, status: bool) -> Result<(), Error> {
-        if jack_id >= self.input_count {
+        if jack_id >= I {
             Err(Error::InvalidJackId)
         } else {
             if status {
@@ -328,7 +333,7 @@ impl<T: Network, R: RngCore> Module<T, R> {
     }
 
     pub fn set_output_patch_enabled(&mut self, jack_id: usize, status: bool) -> Result<(), Error> {
-        if jack_id >= self.output_count {
+        if jack_id >= O {
             Err(Error::InvalidJackId)
         } else {
             if status {
@@ -342,7 +347,7 @@ impl<T: Network, R: RngCore> Module<T, R> {
 
     fn update_patch_state(&mut self) -> Result<(), Error> {
         let mut local_state: LocalState = Default::default();
-        for i in 0..self.input_count {
+        for i in 0..I {
             if (self.input_patch_enabled & (1 << i)) != 0 {
                 local_state
                     .held_inputs
@@ -353,7 +358,7 @@ impl<T: Network, R: RngCore> Module<T, R> {
                     .unwrap();
             }
         }
-        for i in 0..self.output_count {
+        for i in 0..O {
             if (self.output_patch_enabled & (1 << i)) != 0 {
                 local_state
                     .held_outputs

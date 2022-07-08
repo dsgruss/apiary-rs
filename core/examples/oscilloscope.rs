@@ -1,4 +1,4 @@
-use apiary_core::{socket_native::NativeInterface, Error, Module, CHANNELS};
+use apiary_core::{socket_native::NativeInterface, Module, CHANNELS};
 use eframe::egui::{
     self,
     plot::{Line, Plot, Value, Values},
@@ -29,13 +29,12 @@ impl Oscilloscope {
         let thread_data = data.clone();
 
         thread::spawn(move || {
-            let mut module = Module::new(
+            let mut module: Module<_, _, 1, 0> = Module::new(
                 NativeInterface::new(1, 0).unwrap(),
                 rand::thread_rng(),
                 "Oscilloscope".into(),
                 0,
-            )
-            .jack_count(1, 0);
+            );
             let start = Instant::now();
             let mut time: i64 = 0;
 
@@ -51,25 +50,23 @@ impl Oscilloscope {
                         Err(TryRecvError::Empty) => {}
                         Err(TryRecvError::Disconnected) => break 'outer,
                     }
-                    match module.jack_recv(0) {
-                        Ok(pkt) => {
-                            if time % 10 == 0 {
-                                let mut data = thread_data.lock().unwrap();
-                                for i in 0..CHANNELS {
-                                    data[i].push(Value::new(
-                                        time as f64 / 1000.0,
-                                        pkt.data[0].data[i] as f64,
-                                    ));
-                                    if data[i].len() > 400 {
-                                        data[i].remove(0);
-                                    }
-                                }
+
+                    let mut pkt = Default::default();
+                    module.poll(time, |input, _| {
+                        pkt = input[0];
+                    }).unwrap();
+                    if time % 10 == 0 {
+                        let mut data = thread_data.lock().unwrap();
+                        for i in 0..CHANNELS {
+                            data[i].push(Value::new(
+                                time as f64 / 1000.0,
+                                pkt.data[0].data[i] as f64,
+                            ));
+                            if data[i].len() > 400 {
+                                data[i].remove(0);
                             }
                         }
-                        Err(Error::NoData) => {}
-                        Err(e) => info!("Jack recv error {:?}", e),
                     }
-                    module.poll(time).unwrap();
                     time += 1;
                 }
                 thread::sleep(Duration::from_millis(0));
