@@ -1,4 +1,4 @@
-use apiary_core::{socket_native::NativeInterface, Module, CHANNELS};
+use apiary_core::{socket_native::NativeInterface, Module, CHANNELS, AudioFrame, AudioPacket, BLOCK_SIZE};
 use eframe::egui;
 use midir::{MidiInput, MidiInputConnection};
 use std::{
@@ -118,6 +118,15 @@ impl MidiToCv {
                         Err(TryRecvError::Empty) => {}
                         Err(TryRecvError::Disconnected) => break 'outer,
                     }
+                    let mut frame: AudioFrame = Default::default();
+                    for i in 0..CHANNELS {
+                        if voices[i].on {
+                            frame.data[i] = 16000;
+                        }
+                    }
+                    module.jack_send(1, &AudioPacket {
+                        data: [frame; BLOCK_SIZE],
+                    }).unwrap();
                     module.poll(start.elapsed().as_millis() as i64).unwrap();
                     time += 1;
                 }
@@ -161,7 +170,7 @@ impl DisplayModule for MidiToCv {
             .collapsible(false)
             .resizable(false)
             .min_height(450.0)
-            .min_width(190.0)
+            .min_width(100.0)
             .show(ctx, |ui| {
                 ui.heading("Midi to CV");
                 ui.add_space(20.0);
@@ -174,6 +183,7 @@ impl DisplayModule for MidiToCv {
                 if ui.checkbox(&mut self.mdwh_checked, "Mod wheel").changed() {
                     self.tx.send((2, self.mdwh_checked)).unwrap();
                 }
+                ui.allocate_space(ui.available_size());
             });
     }
 }

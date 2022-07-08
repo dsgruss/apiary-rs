@@ -80,7 +80,7 @@ impl NativeInterface {
             input_socket.set_nonblocking(true)?;
             let input_address = SocketAddr::from((local_addr, JACK_PORT)).into();
             input_socket.bind(&input_address)?;
-            input_sockets.push(Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?);
+            input_sockets.push(input_socket);
         }
 
         // For now we just pick a random address in the multicast range for local testing purposes,

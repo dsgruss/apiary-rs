@@ -1,5 +1,5 @@
 use apiary_core::{socket_native::NativeInterface, Module};
-use eframe::egui::{self};
+use eframe::egui;
 use simple_logger::SimpleLogger;
 use std::{
     sync::mpsc::{channel, Sender, TryRecvError},
@@ -12,6 +12,9 @@ use common::DisplayModule;
 
 mod midi_to_cv;
 use midi_to_cv::MidiToCv;
+
+mod oscilloscope;
+use oscilloscope::Oscilloscope;
 
 #[macro_use]
 extern crate log;
@@ -104,6 +107,13 @@ impl eframe::App for Manager {
                     ui.add_space(20.0);
                     if ui.button("Midi to CV").clicked() {
                         self.windows.push(Box::new(MidiToCv::new(format!(
+                            "Test{}",
+                            self.window_count
+                        ))));
+                        self.window_count += 1;
+                    }
+                    if ui.button("Oscilloscope").clicked() {
+                        self.windows.push(Box::new(Oscilloscope::new(format!(
                             "Test{}",
                             self.window_count
                         ))));

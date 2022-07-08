@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use zerocopy::{AsBytes, FromBytes};
 
 pub const CHANNELS: usize = 8;
-const BLOCK_SIZE: usize = 48;
+pub const BLOCK_SIZE: usize = 48;
 type SampleType = i16;
 
 #[cfg(feature = "network-native")]
