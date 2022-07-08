@@ -1,7 +1,13 @@
-use apiary_core::{socket_native::NativeInterface, Module, CHANNELS, Error};
-use eframe::egui::{self, plot::{Value, Values, Line, Plot}};
+use apiary_core::{socket_native::NativeInterface, Error, Module, CHANNELS};
+use eframe::egui::{
+    self,
+    plot::{Line, Plot, Value, Values},
+};
 use std::{
-    sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc, Mutex},
+    sync::{
+        mpsc::{channel, Receiver, Sender, TryRecvError},
+        Arc, Mutex,
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -18,7 +24,6 @@ pub struct Oscilloscope {
 
 impl Oscilloscope {
     pub fn new(name: String) -> Self {
-
         let (ui_tx, ui_rx): (Sender<String>, Receiver<String>) = channel();
         let data: Arc<Mutex<[Vec<Value>; CHANNELS]>> = Default::default();
         let thread_data = data.clone();
@@ -29,7 +34,8 @@ impl Oscilloscope {
                 rand::thread_rng(),
                 "Oscilloscope".into(),
                 0,
-            ).jack_count(1, 0);
+            )
+            .jack_count(1, 0);
             let start = Instant::now();
             let mut time: i64 = 0;
 
@@ -50,14 +56,17 @@ impl Oscilloscope {
                             if time % 10 == 0 {
                                 let mut data = thread_data.lock().unwrap();
                                 for i in 0..CHANNELS {
-                                    data[i].push(Value::new(time as f64 / 1000.0, pkt.data[0].data[i] as f64));
+                                    data[i].push(Value::new(
+                                        time as f64 / 1000.0,
+                                        pkt.data[0].data[i] as f64,
+                                    ));
                                     if data[i].len() > 400 {
                                         data[i].remove(0);
                                     }
                                 }
                             }
                         }
-                        Err(Error::NoData) => {},
+                        Err(Error::NoData) => {}
                         Err(e) => info!("Jack recv error {:?}", e),
                     }
                     module.poll(time).unwrap();
@@ -92,7 +101,7 @@ impl DisplayModule for Oscilloscope {
             .show(ctx, |ui| {
                 ui.heading("Oscilloscope");
                 ui.add_space(20.0);
-                
+
                 let inner_data = self.data.lock().unwrap();
                 Plot::new("my_plot").view_aspect(1.0).show(ui, |plot_ui| {
                     for i in 0..CHANNELS {

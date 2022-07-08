@@ -1,4 +1,6 @@
-use apiary_core::{socket_native::NativeInterface, Module, CHANNELS, AudioFrame, AudioPacket, BLOCK_SIZE};
+use apiary_core::{
+    socket_native::NativeInterface, AudioFrame, AudioPacket, Module, BLOCK_SIZE, CHANNELS,
+};
 use eframe::egui;
 use midir::{MidiInput, MidiInputConnection};
 use std::{
@@ -124,9 +126,14 @@ impl MidiToCv {
                             frame.data[i] = 16000;
                         }
                     }
-                    module.jack_send(1, &AudioPacket {
-                        data: [frame; BLOCK_SIZE],
-                    }).unwrap();
+                    module
+                        .jack_send(
+                            1,
+                            &AudioPacket {
+                                data: [frame; BLOCK_SIZE],
+                            },
+                        )
+                        .unwrap();
                     module.poll(start.elapsed().as_millis() as i64).unwrap();
                     time += 1;
                 }
