@@ -15,7 +15,7 @@ use std::{
 use crate::common::DisplayModule;
 
 pub struct Oscilloscope {
-    name: String,
+    width: f32,
     open: bool,
     tx: Sender<String>,
     address: String,
@@ -23,7 +23,7 @@ pub struct Oscilloscope {
 }
 
 impl Oscilloscope {
-    pub fn new(name: String) -> Self {
+    pub fn new() -> Self {
         let (ui_tx, ui_rx): (Sender<String>, Receiver<String>) = channel();
         let data: Arc<Mutex<[Vec<Value>; CHANNELS]>> = Default::default();
         let thread_data = data.clone();
@@ -74,7 +74,7 @@ impl Oscilloscope {
         });
 
         Oscilloscope {
-            name,
+            width: 25.0,
             open: true,
             tx: ui_tx,
             address: "".to_owned(),
@@ -84,39 +84,35 @@ impl Oscilloscope {
 }
 
 impl DisplayModule for Oscilloscope {
+    fn width(&self) -> f32 {
+        self.width
+    }
+
     fn is_open(&self) -> bool {
         self.open
     }
 
-    fn update(&mut self, ctx: &egui::Context) {
-        egui::Window::new(&self.name)
-            .open(&mut self.open)
-            .collapsible(false)
-            .resizable(false)
-            .min_height(450.0)
-            .min_width(450.0)
-            .show(ctx, |ui| {
-                ui.heading("Oscilloscope");
-                ui.add_space(20.0);
+    fn update(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Oscilloscope");
+        ui.add_space(20.0);
 
-                let inner_data = self.data.lock().unwrap();
-                Plot::new("my_plot").view_aspect(1.0).show(ui, |plot_ui| {
-                    for i in 0..CHANNELS {
-                        let line = Line::new(Values::from_values(inner_data[i].clone()));
-                        plot_ui.line(line);
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label("Multicast Address: ");
-                    ui.text_edit_singleline(&mut self.address);
-                    if ui.button("Connect").clicked() {
-                        self.tx.send(self.address.clone()).unwrap();
-                    }
-                });
-
-                ui.allocate_space(ui.available_size());
+        let inner_data = self.data.lock().unwrap();
+        Plot::new("my_plot")
+            .width(350.0)
+            .height(350.0)
+            .show(ui, |plot_ui| {
+                for i in 0..CHANNELS {
+                    let line = Line::new(Values::from_values(inner_data[i].clone()));
+                    plot_ui.line(line);
+                }
             });
-        ctx.request_repaint();
+
+        ui.horizontal(|ui| {
+            ui.label("Multicast Address: ");
+            ui.text_edit_singleline(&mut self.address);
+            if ui.button("Connect").clicked() {
+                self.tx.send(self.address.clone()).unwrap();
+            }
+        });
     }
 }

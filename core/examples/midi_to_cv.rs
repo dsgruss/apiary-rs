@@ -12,7 +12,7 @@ use std::{
 use crate::common::DisplayModule;
 
 pub struct MidiToCv {
-    name: String,
+    width: f32,
     open: bool,
     _midi_connections: Vec<MidiInputConnection<()>>,
     note_checked: bool,
@@ -36,7 +36,7 @@ struct Voice {
 }
 
 impl MidiToCv {
-    pub fn new(name: String) -> Self {
+    pub fn new() -> Self {
         let (midi_tx, midi_rx) = channel();
 
         let midi_check = MidiInput::new("midir port enumerator").unwrap();
@@ -140,7 +140,7 @@ impl MidiToCv {
         });
 
         MidiToCv {
-            name,
+            width: 10.0,
             open: true,
             _midi_connections: midi_connections,
             note_checked: false,
@@ -165,30 +165,25 @@ impl MidiToCv {
 }
 
 impl DisplayModule for MidiToCv {
+    fn width(&self) -> f32 {
+        self.width
+    }
+
     fn is_open(&self) -> bool {
         self.open
     }
 
-    fn update(&mut self, ctx: &egui::Context) {
-        egui::Window::new(&self.name)
-            .open(&mut self.open)
-            .collapsible(false)
-            .resizable(false)
-            .min_height(450.0)
-            .min_width(100.0)
-            .show(ctx, |ui| {
-                ui.heading("Midi to CV");
-                ui.add_space(20.0);
-                if ui.checkbox(&mut self.note_checked, "Note").changed() {
-                    self.tx.send((0, self.note_checked)).unwrap();
-                }
-                if ui.checkbox(&mut self.gate_checked, "Gate").changed() {
-                    self.tx.send((1, self.gate_checked)).unwrap();
-                }
-                if ui.checkbox(&mut self.mdwh_checked, "Mod wheel").changed() {
-                    self.tx.send((2, self.mdwh_checked)).unwrap();
-                }
-                ui.allocate_space(ui.available_size());
-            });
+    fn update(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Midi to CV");
+        ui.add_space(20.0);
+        if ui.checkbox(&mut self.note_checked, "Note").changed() {
+            self.tx.send((0, self.note_checked)).unwrap();
+        }
+        if ui.checkbox(&mut self.gate_checked, "Gate").changed() {
+            self.tx.send((1, self.gate_checked)).unwrap();
+        }
+        if ui.checkbox(&mut self.mdwh_checked, "Mod wheel").changed() {
+            self.tx.send((2, self.mdwh_checked)).unwrap();
+        }
     }
 }

@@ -106,17 +106,11 @@ impl eframe::App for Manager {
                     }
                     ui.add_space(20.0);
                     if ui.button("Midi to CV").clicked() {
-                        self.windows.push(Box::new(MidiToCv::new(format!(
-                            "Test{}",
-                            self.window_count
-                        ))));
+                        self.windows.push(Box::new(MidiToCv::new()));
                         self.window_count += 1;
                     }
                     if ui.button("Oscilloscope").clicked() {
-                        self.windows.push(Box::new(Oscilloscope::new(format!(
-                            "Test{}",
-                            self.window_count
-                        ))));
+                        self.windows.push(Box::new(Oscilloscope::new()));
                         self.window_count += 1;
                     }
                     ui.add_space(100.0);
@@ -125,8 +119,27 @@ impl eframe::App for Manager {
             );
         });
         self.windows.retain(|w| w.is_open());
-        for w in &mut self.windows {
-            w.update(ctx);
-        }
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                for w in &mut self.windows {
+                    egui::containers::Resize::default()
+                        .fixed_size((15.0 * w.width(), 450.0))
+                        .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                egui::containers::Frame::none()
+                                    .rounding(2.0)
+                                    .stroke((1.0, egui::Color32::BLACK).into())
+                                    .inner_margin(4.0)
+                                    .show(ui, |mut ui| {
+                                        w.update(&mut ui);
+                                        ui.allocate_space(ui.available_size());
+                                    });
+                            });
+                        });
+                }
+                ui.allocate_space(ui.available_size());
+            });
+        });
+        ctx.request_repaint();
     }
 }
