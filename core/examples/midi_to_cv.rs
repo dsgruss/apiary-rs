@@ -1,5 +1,6 @@
 use apiary_core::{
-    socket_native::NativeInterface, AudioFrame, AudioPacket, Module, BLOCK_SIZE, CHANNELS,
+    midi_note_to_voct, socket_native::NativeInterface, AudioFrame, AudioPacket, Module, BLOCK_SIZE,
+    CHANNELS,
 };
 use eframe::egui;
 use midir::{MidiInput, MidiInputConnection};
@@ -9,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::DisplayModule;
+use crate::common::{DisplayModule, Jack};
 
 pub struct MidiToCv {
     width: f32,
@@ -119,18 +120,24 @@ impl MidiToCv {
                         Err(TryRecvError::Empty) => {}
                         Err(TryRecvError::Disconnected) => break 'outer,
                     }
-                    let mut frame: AudioFrame = Default::default();
+                    let mut note_frame: AudioFrame = Default::default();
+                    let mut gate_frame: AudioFrame = Default::default();
                     for i in 0..CHANNELS {
+                        note_frame.data[i] = midi_note_to_voct(voices[i].note);
                         if voices[i].on {
-                            frame.data[i] = 16000;
+                            gate_frame.data[i] = 16000;
                         }
                     }
-                    let pkt = AudioPacket {
-                        data: [frame; BLOCK_SIZE],
+                    let note_pkt = AudioPacket {
+                        data: [note_frame; BLOCK_SIZE],
+                    };
+                    let gate_pkt = AudioPacket {
+                        data: [gate_frame; BLOCK_SIZE],
                     };
                     module
                         .poll(time, |_, output| {
-                            output[1] = pkt;
+                            output[0] = note_pkt;
+                            output[1] = gate_pkt;
                         })
                         .unwrap();
                     time += 1;
@@ -176,13 +183,16 @@ impl DisplayModule for MidiToCv {
     fn update(&mut self, ui: &mut egui::Ui) {
         ui.heading("Midi to CV");
         ui.add_space(20.0);
-        if ui.checkbox(&mut self.note_checked, "Note").changed() {
+        if ui.add(Jack::new(&mut self.note_checked, "Note")).changed() {
             self.tx.send((0, self.note_checked)).unwrap();
         }
-        if ui.checkbox(&mut self.gate_checked, "Gate").changed() {
+        if ui.add(Jack::new(&mut self.gate_checked, "Gate")).changed() {
             self.tx.send((1, self.gate_checked)).unwrap();
         }
-        if ui.checkbox(&mut self.mdwh_checked, "Mod wheel").changed() {
+        if ui
+            .add(Jack::new(&mut self.mdwh_checked, "Mod wheel"))
+            .changed()
+        {
             self.tx.send((2, self.mdwh_checked)).unwrap();
         }
     }

@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::DisplayModule;
+use crate::common::{DisplayModule, Jack};
 
 pub struct Oscilloscope {
     width: f32,
@@ -106,7 +106,10 @@ impl DisplayModule for Oscilloscope {
                 }
             });
 
-        if ui.checkbox(&mut self.input_checked, "Input").changed() {
+        if ui
+            .add(Jack::new(&mut self.input_checked, "Input"))
+            .changed()
+        {
             self.tx.send(self.input_checked).unwrap();
         }
     }

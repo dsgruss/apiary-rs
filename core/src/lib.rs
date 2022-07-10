@@ -33,6 +33,25 @@ const PREFERRED_SUBNET: &str = "10.0.0.0/8";
 const PATCH_EP: &str = "239.0.0.0:19874";
 const JACK_PORT: u16 = 19991;
 
+pub fn midi_note_to_voct(note: u8) -> i16 {
+    (note as i16 - 64) * 512
+}
+
+pub fn voct_to_frequency(v_oct: i16) -> f32 {
+    440.0 * voct_to_freq_scale(v_oct as f32 - 5.0)
+}
+
+#[cfg(feature = "std")]
+pub fn voct_to_freq_scale(v_oct: f32) -> f32 {
+    2.0_f32.powf((v_oct) / (512.0 * 12.0))
+}
+
+#[cfg(not(feature = "std"))]
+pub fn voct_to_freq_scale(v_oct: f32) -> f32 {
+    use libm::powf;
+    powf(2.0, (v_oct) / (512.0 * 12.0))
+}
+
 const SW: usize = 48;
 const JW: usize = 15;
 pub type Uuid = String<SW>;

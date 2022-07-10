@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::DisplayModule;
+use crate::common::{DisplayModule, Jack};
 
 pub struct AudioInterface {
     width: f32,
@@ -144,7 +144,10 @@ impl DisplayModule for AudioInterface {
     fn update(&mut self, ui: &mut egui::Ui) {
         ui.heading("Audio Interface");
         ui.add_space(20.0);
-        if ui.checkbox(&mut self.input_checked, "Input").changed() {
+        if ui
+            .add(Jack::new(&mut self.input_checked, "Input"))
+            .changed()
+        {
             self.tx.send(self.input_checked).unwrap();
         }
     }
