@@ -19,7 +19,6 @@ pub struct Mixer {
 
 impl Mixer {
     pub fn new() -> Self {
-
         let (ui_tx, ui_rx): (Sender<UiUpdate>, Receiver<UiUpdate>) = channel();
 
         thread::spawn(move || {
@@ -49,13 +48,18 @@ impl Mixer {
                         Err(TryRecvError::Empty) => {}
                         Err(TryRecvError::Disconnected) => break 'outer,
                     }
-                    module.poll(time, |input, output| {
-                        for i in 0..BLOCK_SIZE {
-                            for j in 0..CHANNELS {
-                                output[0].data[i].data[j] = (input[0].data[i].data[j] as f32 * (input[1].data[i].data[j] as f32 / i16::MAX as f32)).round() as i16;
+                    module
+                        .poll(time, |input, output| {
+                            for i in 0..BLOCK_SIZE {
+                                for j in 0..CHANNELS {
+                                    output[0].data[i].data[j] = (input[0].data[i].data[j] as f32
+                                        * (input[1].data[i].data[j] as f32 / i16::MAX as f32))
+                                        .round()
+                                        as i16;
+                                }
                             }
-                        }
-                    }).unwrap();
+                        })
+                        .unwrap();
                     time += 1;
                 }
                 thread::sleep(Duration::from_millis(0));
@@ -107,7 +111,10 @@ impl DisplayModule for Mixer {
                 .unwrap();
         }
         ui.add_space(20.0);
-        if ui.add(Jack::new(&mut self.output_checked, "Output")).changed() {
+        if ui
+            .add(Jack::new(&mut self.output_checked, "Output"))
+            .changed()
+        {
             self.tx
                 .send(UiUpdate {
                     input: false,
