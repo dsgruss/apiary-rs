@@ -19,6 +19,9 @@ use oscillator::Oscillator;
 mod mixer;
 use mixer::Mixer;
 
+mod filter;
+use filter::Filter;
+
 mod audio_interface;
 use audio_interface::AudioInterface;
 
@@ -106,6 +109,7 @@ impl eframe::App for Manager {
                         // Send halt directive
                         info!("Close button clicked");
                         self.tx.send(true).unwrap();
+                        self.windows.clear();
                     }
                     if ui.button("Save Preset").clicked() {
                         // Gather preset information
@@ -127,6 +131,11 @@ impl eframe::App for Manager {
                     if ui.button("Mixer").clicked() {
                         self.windows
                             .push((self.window_count, Box::new(Mixer::new())));
+                        self.window_count += 1;
+                    }
+                    if ui.button("Filter").clicked() {
+                        self.windows
+                            .push((self.window_count, Box::new(Filter::new())));
                         self.window_count += 1;
                     }
                     if ui.button("Audio Interface").clicked() {

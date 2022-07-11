@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use eframe::egui;
 
 pub trait DisplayModule {
@@ -60,4 +62,67 @@ impl<'a> egui::Widget for Jack<'a> {
         })
         .inner
     }
+}
+
+pub struct Knob<'a> {
+    value: &'a mut f32,
+    text: egui::WidgetText,
+    from: f32,
+    to: f32,
+    log: bool,
+    drag_value: f32,
+    log_scale: f32,
+}
+
+impl<'a> Knob<'a> {
+    pub fn new(value: &'a mut f32, text: impl Into<egui::WidgetText>, from: f32, to: f32, log: bool) -> Self {
+        let mut log_scale = 1.0;
+        let drag_value = if log {
+            log_scale = (to / from).log10();
+            (*value / from).log10() / log_scale
+        } else {
+            (*value - from) / (to - from)
+        };
+        Knob { value, text: text.into(), from, to, log, drag_value, log_scale }
+    }
+}
+
+impl<'a> egui::Widget for Knob<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let desired_size = ui.spacing().interact_size.y * egui::vec2(4.0, 4.0);
+        let (rect, mut response) =
+            ui.allocate_exact_size(desired_size, egui::Sense::click_and_drag());
+        if response.dragged() {
+            let drag_value = (self.drag_value - response.drag_delta().y / 300.0).clamp(0.0, 1.0);
+            *self.value = if self.log {
+                self.from * (10.0_f32).powf(self.log_scale * drag_value)
+            } else {
+                drag_value * (self.to - self.from) + self.from
+            };
+            response.mark_changed();
+        }
+        if ui.is_rect_visible(rect) {
+            let visuals = ui.style().interact_selectable(&response, response.dragged());
+            let rect = rect.expand(visuals.expansion);
+            let radius = rect.height() * 0.3;
+            for i in 0..100 {
+                let pos0 = rect.center() + frac_to_vec(i as f32 / 100.0, radius);
+                let pos1 = rect.center() + frac_to_vec((i + 1) as f32 / 100.0, radius);
+                ui.painter().line_segment([pos0, pos1], visuals.fg_stroke);
+            }
+            ui.painter().circle(rect.center() + frac_to_vec(self.drag_value, radius), radius * 0.25, visuals.bg_fill, visuals.fg_stroke);
+        }
+        if response.changed() {
+            egui::show_tooltip(ui.ctx(), egui::Id::new("value"), |ui| {
+                ui.label(format!("{:.1}", *self.value));
+            });
+        }
+        ui.label(self.text);
+        response
+    }
+}
+
+fn frac_to_vec(val: f32, radius: f32) -> egui::Vec2 {
+    let theta = val * 300.0 + 120.0;
+    [radius * (PI * theta / 180.0).cos(), radius * (PI * theta / 180.0).sin()].into()
 }
