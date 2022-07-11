@@ -75,7 +75,13 @@ pub struct Knob<'a> {
 }
 
 impl<'a> Knob<'a> {
-    pub fn new(value: &'a mut f32, text: impl Into<egui::WidgetText>, from: f32, to: f32, log: bool) -> Self {
+    pub fn new(
+        value: &'a mut f32,
+        text: impl Into<egui::WidgetText>,
+        from: f32,
+        to: f32,
+        log: bool,
+    ) -> Self {
         let mut log_scale = 1.0;
         let drag_value = if log {
             log_scale = (to / from).log10();
@@ -83,7 +89,15 @@ impl<'a> Knob<'a> {
         } else {
             (*value - from) / (to - from)
         };
-        Knob { value, text: text.into(), from, to, log, drag_value, log_scale }
+        Knob {
+            value,
+            text: text.into(),
+            from,
+            to,
+            log,
+            drag_value,
+            log_scale,
+        }
     }
 }
 
@@ -102,7 +116,9 @@ impl<'a> egui::Widget for Knob<'a> {
             response.mark_changed();
         }
         if ui.is_rect_visible(rect) {
-            let visuals = ui.style().interact_selectable(&response, response.dragged());
+            let visuals = ui
+                .style()
+                .interact_selectable(&response, response.dragged());
             let rect = rect.expand(visuals.expansion);
             let radius = rect.height() * 0.3;
             for i in 0..100 {
@@ -110,7 +126,12 @@ impl<'a> egui::Widget for Knob<'a> {
                 let pos1 = rect.center() + frac_to_vec((i + 1) as f32 / 100.0, radius);
                 ui.painter().line_segment([pos0, pos1], visuals.fg_stroke);
             }
-            ui.painter().circle(rect.center() + frac_to_vec(self.drag_value, radius), radius * 0.25, visuals.bg_fill, visuals.fg_stroke);
+            ui.painter().circle(
+                rect.center() + frac_to_vec(self.drag_value, radius),
+                radius * 0.25,
+                visuals.bg_fill,
+                visuals.fg_stroke,
+            );
         }
         if response.changed() {
             egui::show_tooltip(ui.ctx(), egui::Id::new("value"), |ui| {
@@ -124,5 +145,9 @@ impl<'a> egui::Widget for Knob<'a> {
 
 fn frac_to_vec(val: f32, radius: f32) -> egui::Vec2 {
     let theta = val * 300.0 + 120.0;
-    [radius * (PI * theta / 180.0).cos(), radius * (PI * theta / 180.0).sin()].into()
+    [
+        radius * (PI * theta / 180.0).cos(),
+        radius * (PI * theta / 180.0).sin(),
+    ]
+    .into()
 }

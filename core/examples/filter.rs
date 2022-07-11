@@ -1,12 +1,16 @@
 use apiary_core::{socket_native::NativeInterface, Module, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
 use eframe::egui;
 use std::{
-    sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc, Mutex},
+    f32::consts::PI,
+    sync::{
+        mpsc::{channel, Receiver, Sender, TryRecvError},
+        Arc, Mutex,
+    },
     thread,
-    time::{Duration, Instant}, f32::consts::PI,
+    time::{Duration, Instant},
 };
 
-use crate::common::{DisplayModule, UiUpdate, Jack, Knob};
+use crate::common::{DisplayModule, Jack, Knob, UiUpdate};
 
 struct LadderFilter {
     omega0: f32,
@@ -17,7 +21,12 @@ struct LadderFilter {
 
 impl Default for LadderFilter {
     fn default() -> Self {
-        LadderFilter { omega0: 2.0 * PI * 1000.0, input: 0.0, state: [0.0; 4], resonance: 1.0 }
+        LadderFilter {
+            omega0: 2.0 * PI * 1000.0,
+            input: 0.0,
+            state: [0.0; 4],
+            resonance: 1.0,
+        }
     }
 }
 
@@ -70,7 +79,6 @@ impl LadderFilter {
     }
 }
 
-
 fn clip(x: f32) -> f32 {
     let x0 = if x < -3.0 {
         -3.0
@@ -93,7 +101,6 @@ pub struct Filter {
 
 impl Filter {
     pub fn new() -> Self {
-
         let (ui_tx, ui_rx): (Sender<UiUpdate>, Receiver<UiUpdate>) = channel();
         let cutoff = Arc::new(Mutex::new(1000.0));
         let thread_cutoff = cutoff.clone();
@@ -127,14 +134,19 @@ impl Filter {
                         Err(TryRecvError::Disconnected) => break 'outer,
                     }
                     let data = *thread_cutoff.lock().unwrap();
-                    module.poll(time, |input, output| {
-                        for i in 0..BLOCK_SIZE {
-                            for j in 0..CHANNELS {
-                                filters[j].set_params(data, 0.0);
-                                output[0].data[i].data[j] = filters[j].process(input[0].data[i].data[j] as f32, 1.0 / SAMPLE_RATE).round() as i16;
+                    module
+                        .poll(time, |input, output| {
+                            for i in 0..BLOCK_SIZE {
+                                for j in 0..CHANNELS {
+                                    filters[j].set_params(data, 0.0);
+                                    output[0].data[i].data[j] = filters[j]
+                                        .process(input[0].data[i].data[j] as f32, 1.0 / SAMPLE_RATE)
+                                        .round()
+                                        as i16;
+                                }
                             }
-                        }
-                    }).unwrap();
+                        })
+                        .unwrap();
                     time += 1;
                 }
                 thread::sleep(Duration::from_millis(0));
