@@ -9,13 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::{DisplayModule, Jack};
-
-struct UiUpdate {
-    input: bool,
-    id: usize,
-    on: bool,
-}
+use crate::common::{DisplayModule, Jack, UiUpdate};
 
 pub struct Oscillator {
     width: f32,

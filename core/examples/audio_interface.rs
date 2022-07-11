@@ -36,7 +36,14 @@ where
                 }
                 for i in 0..(data.len() / 2) {
                     let sample = match audio_rx.try_recv() {
-                        Ok(v) => Sample::from(&v.data[0]),
+                        Ok(v) => {
+                            let mut avg: i32 = 0;
+                            for val in v.data {
+                                avg += val as i32;
+                            }
+                            let sample = (avg >> 3) as i16;
+                            Sample::from(&sample)
+                        }
                         Err(TryRecvError::Empty) => {
                             dropped_frames += 1;
                             Sample::from(&0.0)

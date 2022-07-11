@@ -6,6 +6,12 @@ pub trait DisplayModule {
     fn update(&mut self, ui: &mut egui::Ui);
 }
 
+pub struct UiUpdate {
+    pub input: bool,
+    pub id: usize,
+    pub on: bool,
+}
+
 pub struct Jack<'a> {
     on: &'a mut bool,
     text: egui::WidgetText,
