@@ -13,6 +13,9 @@ use common::DisplayModule;
 mod midi_to_cv;
 use midi_to_cv::MidiToCv;
 
+mod oscillator;
+use oscillator::Oscillator;
+
 mod audio_interface;
 use audio_interface::AudioInterface;
 
@@ -111,6 +114,11 @@ impl eframe::App for Manager {
                     if ui.button("Midi to CV").clicked() {
                         self.windows
                             .push((self.window_count, Box::new(MidiToCv::new())));
+                        self.window_count += 1;
+                    }
+                    if ui.button("Oscillator").clicked() {
+                        self.windows
+                            .push((self.window_count, Box::new(Oscillator::new())));
                         self.window_count += 1;
                     }
                     if ui.button("Audio Interface").clicked() {

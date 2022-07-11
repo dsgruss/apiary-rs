@@ -33,6 +33,8 @@ const PREFERRED_SUBNET: &str = "10.0.0.0/8";
 const PATCH_EP: &str = "239.0.0.0:19874";
 const JACK_PORT: u16 = 19991;
 
+pub const SAMPLE_RATE: f32 = 48000.0;
+
 pub fn midi_note_to_voct(note: u8) -> i16 {
     (note as i16 - 64) * 512
 }
@@ -296,6 +298,7 @@ impl<T: Network, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> 
         } else {
             self.leader_election.reset(time);
         }
+        self.interface.poll(time)?;
         Ok(())
     }
 
