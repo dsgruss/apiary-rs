@@ -28,6 +28,8 @@ use audio_interface::AudioInterface;
 mod oscilloscope;
 use oscilloscope::Oscilloscope;
 
+// mod module_template;
+
 #[macro_use]
 extern crate log;
 

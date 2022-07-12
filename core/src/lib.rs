@@ -240,6 +240,7 @@ pub struct Module<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> 
     output_patch_enabled: u16,
     input_buffer: [AudioPacket; I],
     output_buffer: [AudioPacket; O],
+    dropped_packets: u32,
 }
 
 impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> {
@@ -253,6 +254,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             output_patch_enabled: 0,
             input_buffer: [Default::default(); I],
             output_buffer: [Default::default(); O],
+            dropped_packets: 0,
         }
     }
 
@@ -286,8 +288,15 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                 self.send_directive(&resp)?;
             }
             for i in 0..I {
+                let mut count = 0;
                 while let Ok(a) = self.jack_recv(i) {
                     self.input_buffer[i] = a;
+                    count += 1;
+                }
+                if count == 0 {
+                    self.dropped_packets += 1;
+                } else {
+                    self.dropped_packets += count - 1;
                 }
             }
             f(&self.input_buffer, &mut self.output_buffer);
@@ -299,6 +308,12 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             self.leader_election.reset(time);
         }
         self.interface.poll(time)?;
+        if time % 10000 == 0 {
+            if self.dropped_packets != 0 {
+                info!("{:?} dropped packets: {:?}", self.uuid, self.dropped_packets);
+                self.dropped_packets = 0;
+            }
+        }
         Ok(())
     }
 

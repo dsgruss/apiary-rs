@@ -31,7 +31,10 @@ where
             &config,
             move |data: &mut [T], _| {
                 if start.elapsed().as_secs() >= 10 {
-                    info!("Audio dropped frames: {:?}", dropped_frames);
+                    if dropped_frames != 0 {
+                        info!("Audio dropped frames: {:?}", dropped_frames);
+                        dropped_frames = 0;
+                    }
                     start = Instant::now();
                 }
                 for i in 0..(data.len() / 2) {
@@ -73,7 +76,7 @@ impl AudioInterface {
         let config = supported_config.into();
 
         let (audio_tx, audio_rx): (SyncSender<AudioFrame>, Receiver<AudioFrame>) =
-            sync_channel(960);
+            sync_channel(2000);
 
         let audio_stream = match sample_format {
             SampleFormat::F32 => run::<f32>(&device, &config, audio_rx),
@@ -85,49 +88,7 @@ impl AudioInterface {
 
         let (ui_tx, ui_rx): (Sender<bool>, Receiver<bool>) = channel();
 
-        thread::spawn(move || {
-            let mut module: Module<_, _, 1, 0> = Module::new(
-                NativeInterface::new().unwrap(),
-                rand::thread_rng(),
-                "audio_interface".into(),
-                0,
-            );
-            let start = Instant::now();
-            let mut time: i64 = 0;
-            let mut dropped_frames = 0;
-
-            'outer: loop {
-                while time < start.elapsed().as_millis() as i64 {
-                    if time % 10000 == 0 {
-                        info!("Module dropped frames: {:?}", dropped_frames);
-                    }
-                    match ui_rx.try_recv() {
-                        Ok(checked) => {
-                            module.set_input_patch_enabled(0, checked).unwrap();
-                        }
-                        Err(TryRecvError::Empty) => {}
-                        Err(TryRecvError::Disconnected) => break 'outer,
-                    }
-                    module
-                        .poll(time, |input, _| {
-                            for frame in input[0].data {
-                                match audio_tx.try_send(frame) {
-                                    Ok(()) => {}
-                                    Err(TrySendError::Full(_)) => {
-                                        dropped_frames += 1;
-                                    }
-                                    Err(TrySendError::Disconnected(_)) => {
-                                        panic!("Audio channel disconnected")
-                                    }
-                                }
-                            }
-                        })
-                        .unwrap();
-                    time += 1;
-                }
-                thread::sleep(Duration::from_millis(0));
-            }
-        });
+        thread::spawn(move || process(ui_rx, audio_tx));
 
         AudioInterface {
             width: 5.0,
@@ -136,6 +97,54 @@ impl AudioInterface {
             tx: ui_tx,
             _audio_stream: audio_stream,
         }
+    }
+}
+
+fn process(ui_rx: Receiver<bool>, audio_tx: SyncSender<AudioFrame>) {
+    let start = Instant::now();
+    let mut time: i64 = 0;
+    let mut dropped_frames = 0;
+
+    let mut module: Module<_, _, 1, 0> = Module::new(
+        NativeInterface::new().unwrap(),
+        rand::thread_rng(),
+        "audio_interface".into(),
+        time,
+    );
+
+    'outer: loop {
+        while time < start.elapsed().as_millis() as i64 {
+            if time % 10000 == 0 {
+                if dropped_frames != 0 {
+                    info!("Module dropped frames: {:?}", dropped_frames);
+                    dropped_frames = 0;
+                }
+            }
+            match ui_rx.try_recv() {
+                Ok(checked) => {
+                    module.set_input_patch_enabled(0, checked).unwrap();
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => break 'outer,
+            }
+            module
+                .poll(time, |input, _| {
+                    for frame in input[0].data {
+                        match audio_tx.try_send(frame) {
+                            Ok(()) => {}
+                            Err(TrySendError::Full(_)) => {
+                                dropped_frames += 1;
+                            }
+                            Err(TrySendError::Disconnected(_)) => {
+                                panic!("Audio channel disconnected")
+                            }
+                        }
+                    }
+                })
+                .unwrap();
+            time += 1;
+        }
+        thread::sleep(Duration::from_millis(0));
     }
 }
 

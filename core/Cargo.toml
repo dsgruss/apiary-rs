@@ -16,14 +16,13 @@ managed = { version = "0.8.0", default-features = false }
 zerocopy = "0.6.1"
 
 libm = "0.2.2"
+itertools = { version = "0.10.3", default-features = false }
 
 # ipconfig = { version = "0.3.0", optional = true }
 local-ip-address = { version = "0.4.4", optional = true }
 ipnet = { version = "2.5.0", optional = true }
 socket2 = { version = "0.4.4", optional = true }
 rand = { version = "0.8.1", optional = true }
-
-itertools = { version = "0.10.3", default-features = false, optional = true }
 
 [dependencies.smoltcp]
 version = "0.8.1"
@@ -37,7 +36,7 @@ optional = true
 [features]
 std = []
 
-network-smoltcp = ["smoltcp", "itertools"]
+network-smoltcp = ["smoltcp"]
 network-native = ["std", "local-ip-address", "ipnet", "socket2", "rand"]
 
 default = ["network-native"]

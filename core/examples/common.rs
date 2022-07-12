@@ -8,10 +8,17 @@ pub trait DisplayModule {
     fn update(&mut self, ui: &mut egui::Ui);
 }
 
+#[derive(Debug)]
 pub struct UiUpdate {
     pub input: bool,
     pub id: usize,
     pub on: bool,
+}
+
+impl UiUpdate {
+    pub fn new(input: bool, id: usize, on: bool) -> Self {
+        UiUpdate { input, id, on }
+    }
 }
 
 pub struct Jack<'a> {

@@ -1,4 +1,4 @@
-use apiary_core::{socket_native::NativeInterface, Module, BLOCK_SIZE, CHANNELS};
+use apiary_core::{socket_native::NativeInterface, Module, CHANNELS, BLOCK_SIZE};
 use eframe::egui;
 use std::{
     sync::mpsc::{channel, Receiver, Sender, TryRecvError},
@@ -52,9 +52,8 @@ impl Mixer {
                         .poll(time, |input, output| {
                             for i in 0..BLOCK_SIZE {
                                 for j in 0..CHANNELS {
-                                    output[0].data[i].data[j] = (input[0].data[i].data[j] as f32
-                                        * (input[1].data[i].data[j] as f32 / i16::MAX as f32))
-                                        .round()
+                                    output[0].data[i].data[j] = (input[0].data[i].data[j] as i32
+                                        * input[1].data[i].data[j] as i32 >> 16)
                                         as i16;
                                 }
                             }
