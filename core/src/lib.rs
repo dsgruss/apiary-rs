@@ -288,15 +288,11 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                 self.send_directive(&resp)?;
             }
             for i in 0..I {
-                let mut count = 0;
-                while let Ok(a) = self.jack_recv(i) {
+                if let Ok(a) = self.jack_recv(i) {
                     self.input_buffer[i] = a;
-                    count += 1;
                 }
-                if count == 0 {
+                else {
                     self.dropped_packets += 1;
-                } else {
-                    self.dropped_packets += count - 1;
                 }
             }
             f(&self.input_buffer, &mut self.output_buffer);
