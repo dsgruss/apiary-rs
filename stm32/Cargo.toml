@@ -1,6 +1,6 @@
 [package]
 authors = ["Daniel Gruss <dsgruss@users.noreply.github.com>"]
-edition = "2018"
+edition = "2021"
 readme = "README.md"
 name = "apiary"
 version = "0.1.0"

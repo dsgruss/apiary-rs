@@ -30,7 +30,7 @@ impl Oscilloscope {
 
         thread::spawn(move || {
             let mut module: Module<_, _, 1, 0> = Module::new(
-                NativeInterface::new(1, 0).unwrap(),
+                NativeInterface::new().unwrap(),
                 rand::thread_rng(),
                 "Oscilloscope".into(),
                 0,

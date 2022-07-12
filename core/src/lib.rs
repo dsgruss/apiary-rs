@@ -201,7 +201,7 @@ pub enum Error {
 ///
 /// Since the backend networking can be changed to run on a host operating system or on a full
 /// network stack, this trait defines what methods are needed to be implemented to accomplish this.
-pub trait Network {
+pub trait Network<const I: usize, const O: usize> {
     /// Update internal state and send/recv packets, if needed
     fn poll(&mut self, _time: i64) -> Result<bool, Error> {
         Ok(true)
@@ -232,7 +232,7 @@ pub trait Network {
 /// are responsible for providing the current time (in milliseconds from an arbitrary start), a
 /// source of random source, and `poll`-ing the module at regular intervals to perform network
 /// updates.
-pub struct Module<T: Network, R: RngCore, const I: usize, const O: usize> {
+pub struct Module<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> {
     uuid: Uuid,
     interface: T,
     leader_election: LeaderElection<R>,
@@ -242,7 +242,7 @@ pub struct Module<T: Network, R: RngCore, const I: usize, const O: usize> {
     output_buffer: [AudioPacket; O],
 }
 
-impl<T: Network, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> {
+impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> {
     pub fn new(interface: T, rand_source: R, id: Uuid, time: i64) -> Self {
         let leader_election = LeaderElection::new(id.clone(), time, rand_source);
         Module {

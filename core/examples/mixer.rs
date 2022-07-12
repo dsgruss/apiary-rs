@@ -23,7 +23,7 @@ impl Mixer {
 
         thread::spawn(move || {
             let mut module: Module<_, _, 2, 1> = Module::new(
-                NativeInterface::new(2, 1).unwrap(),
+                NativeInterface::new().unwrap(),
                 rand::thread_rng(),
                 "Mixer".into(),
                 0,

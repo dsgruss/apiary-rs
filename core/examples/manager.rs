@@ -45,7 +45,7 @@ fn main() {
 
     thread::spawn(move || {
         let mut module: Module<_, _, 0, 0> = Module::new(
-            NativeInterface::new(0, 0).unwrap(),
+            NativeInterface::new().unwrap(),
             rand::thread_rng(),
             "Manager".into(),
             0,

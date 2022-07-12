@@ -107,7 +107,7 @@ impl Filter {
 
         thread::spawn(move || {
             let mut module: Module<_, _, 1, 1> = Module::new(
-                NativeInterface::new(1, 1).unwrap(),
+                NativeInterface::new().unwrap(),
                 rand::thread_rng(),
                 "Filter".into(),
                 0,

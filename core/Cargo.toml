@@ -23,6 +23,8 @@ ipnet = { version = "2.5.0", optional = true }
 socket2 = { version = "0.4.4", optional = true }
 rand = { version = "0.8.1", optional = true }
 
+itertools = { version = "0.10.3", default-features = false, optional = true }
+
 [dependencies.smoltcp]
 version = "0.8.1"
 default-features = false
@@ -35,7 +37,7 @@ optional = true
 [features]
 std = []
 
-network-smoltcp = ["smoltcp"]
+network-smoltcp = ["smoltcp", "itertools"]
 network-native = ["std", "local-ip-address", "ipnet", "socket2", "rand"]
 
 default = ["network-native"]

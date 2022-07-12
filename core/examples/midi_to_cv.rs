@@ -66,7 +66,7 @@ impl MidiToCv {
 
         thread::spawn(move || {
             let mut module: Module<_, _, 0, 3> = Module::new(
-                NativeInterface::new(0, 3).unwrap(),
+                NativeInterface::new().unwrap(),
                 rand::thread_rng(),
                 "Midi_to_cv".into(),
                 0,

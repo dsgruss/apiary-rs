@@ -38,7 +38,7 @@ impl From<std::io::Error> for Error {
     }
 }
 
-pub struct NativeInterface {
+pub struct NativeInterface<const I: usize, const O: usize> {
     patch_socket: Socket,
     patch_ep: SocketAddrV4,
     input_sockets: Vec<Socket>,
@@ -47,8 +47,8 @@ pub struct NativeInterface {
     local_addr: Ipv4Addr,
 }
 
-impl NativeInterface {
-    pub fn new(input_count: usize, output_count: usize) -> Result<Self, Error> {
+impl<const I: usize, const O: usize> NativeInterface<I, O> {
+    pub fn new() -> Result<Self, Error> {
         let ips = list_afinet_netifas()?;
         let preferred_subnet: Ipv4Net = PREFERRED_SUBNET.parse()?;
         let mut local_addr = Ipv4Addr::UNSPECIFIED;
@@ -74,7 +74,7 @@ impl NativeInterface {
         patch_socket.join_multicast_v4(patch_ep.ip(), &local_addr)?;
 
         let mut input_sockets = vec![];
-        for _ in 0..input_count {
+        for _ in 0..I {
             let input_socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
             input_socket.set_reuse_address(true)?;
             input_socket.set_nonblocking(true)?;
@@ -89,7 +89,7 @@ impl NativeInterface {
         // multicast could help here.
         let mut output_eps = vec![];
         let mut rng = thread_rng();
-        for _ in 0..output_count {
+        for _ in 0..O {
             let addr = Ipv4Addr::new(
                 239,
                 rng.gen_range(0..255),
@@ -106,14 +106,14 @@ impl NativeInterface {
             patch_socket,
             patch_ep,
             input_sockets,
-            input_groups: vec![None; input_count],
+            input_groups: vec![None; I],
             output_eps,
             local_addr,
         })
     }
 }
 
-impl Network for NativeInterface {
+impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
     fn can_send(&mut self) -> bool {
         true
     }

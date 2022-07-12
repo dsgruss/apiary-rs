@@ -30,7 +30,7 @@ impl Oscillator {
 
         thread::spawn(move || {
             let mut module: Module<_, _, 1, 4> = Module::new(
-                NativeInterface::new(1, 4).unwrap(),
+                NativeInterface::new().unwrap(),
                 rand::thread_rng(),
                 "Oscillator".into(),
                 0,

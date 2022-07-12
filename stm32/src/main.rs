@@ -136,7 +136,7 @@ fn main() -> ! {
 
     let mut storage = Default::default();
     let mut module: Module<_, _, 1, 1> = Module::new(
-        SmoltcpInterface::new(&mut eth_dma, &mut storage),
+        SmoltcpInterface::<_, 1, 1, 3>::new(&mut eth_dma, &mut storage),
         rand_source,
         uuid.clone(),
         0,
