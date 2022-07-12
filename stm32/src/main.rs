@@ -5,15 +5,15 @@ use panic_semihosting as _;
 // use panic_itm as _;
 // use panic_halt as _;
 
-use cortex_m::interrupt::Mutex;
-use cortex_m_rt::entry;
+use cortex_m::{asm, interrupt::Mutex};
+use cortex_m_rt::{entry, exception};
 use stm32f4xx_hal::{
     adc::{
         config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
         Adc,
     },
     gpio::GpioExt,
-    pac::{interrupt, CorePeripherals, Peripherals, USART3},
+    pac::{interrupt, CorePeripherals, Peripherals, USART3, SYST},
     prelude::*,
     rcc::RccExt,
     serial::Tx,
@@ -62,6 +62,7 @@ impl log::Log for SerialLogger {
 }
 
 static LOGGER: SerialLogger = SerialLogger::new();
+static TIME: Mutex<RefCell<i64>> = Mutex::new(RefCell::new(0));
 
 use apiary_core::{socket_smoltcp::SmoltcpInterface, AudioPacket, Module, Uuid};
 
@@ -70,7 +71,7 @@ use apiary::{Ui, UiPins};
 #[entry]
 fn main() -> ! {
     let p = Peripherals::take().unwrap();
-    let cp = CorePeripherals::take().unwrap();
+    let mut cp = CorePeripherals::take().unwrap();
 
     let rcc = p.RCC.constrain();
     let clocks = rcc
@@ -159,45 +160,55 @@ fn main() -> ! {
 
     let mut packet: AudioPacket = Default::default();
 
-    let mut timer = cp.SYST.counter_us(&clocks);
+    // let mut timer = cp.SYST.counter_us(&clocks);
+    cp.SYST.set_reload(1000 * (clocks.sysclk().raw() / 8 / 1_000_000) - 1);
+    info!("Clock reload set at {:?}", 1.millis::<1, 1_000_000>().ticks());
+    cp.SYST.enable_counter();
+    cp.SYST.enable_interrupt();
     let mut time: i64 = 0;
     let mut ui_accum = 0;
     let mut send_accum = 0;
     let mut poll_accum = 0;
     let mut adc_accum = 0;
-    timer.start(1.millis()).unwrap();
+    // timer.start(1.millis()).unwrap();
 
     loop {
-        nb::block!(timer.wait()).unwrap();
+        while time >= cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow()) {
+            asm::wfi();
+        }
         time += 1;
 
-        let ui_start = timer.now().ticks();
+        // let ui_start = timer.now();
         let (changed, sw2, sw4) = ui.poll();
         if changed {
             module.set_input_patch_enabled(0, sw2).unwrap();
             module.set_output_patch_enabled(0, sw4).unwrap();
         }
-        ui_accum += timer.now().ticks() - ui_start;
+        // ui_accum += (timer.now() - ui_start).to_micros();
 
-        let poll_start = timer.now().ticks();
-        if let Err(e) = module.poll(time, |_, output| {
-            output[0] = packet;
+        // let poll_start = timer.now();
+        if let Err(e) = module.poll(time, |input, output| {
+            output[0] = input[0];
         }) {
             info!("Data send error: {:?}", e);
         }
-        poll_accum += timer.now().ticks() - poll_start;
+        // let poll_len = (timer.now() - poll_start).to_micros();
+        // poll_accum += poll_len;
+        // if poll_len > 500 {
+        //     info!("Long poll detected: {:?}", poll_len);
+        // }
 
-        let send_start = timer.now().ticks();
-        send_accum += timer.now().ticks() - send_start;
+        // let send_start = timer.now();
+        // send_accum += (timer.now() - send_start).to_micros();
 
-        let adc_start = timer.now().ticks();
+        // let adc_start = timer.now();
+        // sample = adc.convert(&pa0, SampleTime::Cycles_84);
         for frame in &mut packet.data {
-            sample = adc.convert(&pa0, SampleTime::Cycles_84);
             for v in &mut frame.data {
-                *v = sample as i16;
+                *v = 0 as i16;
             }
         }
-        adc_accum += timer.now().ticks() - adc_start;
+        // adc_accum += (timer.now() - adc_start).to_micros();
 
         if time % 1000 == 0 {
             info!(
@@ -224,6 +235,14 @@ fn main() -> ! {
             adc_accum = 0;
         }
     }
+}
+
+#[exception]
+fn SysTick() {
+    cortex_m::interrupt::free(|cs| {
+        let mut time = TIME.borrow(cs).borrow_mut();
+        *time += 1;
+    })
 }
 
 #[interrupt]
