@@ -17,7 +17,7 @@ pub mod socket_native;
 #[cfg(feature = "network-smoltcp")]
 pub mod socket_smoltcp;
 
-use heapless::{String, Vec};
+use heapless::String;
 use leader_election::LeaderElection;
 use rand_core::RngCore;
 use serde::{Deserialize, Serialize};
@@ -55,7 +55,6 @@ pub fn voct_to_freq_scale(v_oct: f32) -> f32 {
 }
 
 const SW: usize = 48;
-const JW: usize = 15;
 pub type Uuid = String<SW>;
 type JackId = u32;
 
@@ -104,8 +103,10 @@ struct HeldOutputJack {
 
 #[derive(PartialEq, Serialize, Deserialize, Default, Clone, Debug)]
 struct LocalState {
-    held_inputs: Vec<HeldInputJack, JW>,
-    held_outputs: Vec<HeldOutputJack, JW>,
+    num_held_inputs: u8,
+    num_held_outputs: u8,
+    held_input: Option<HeldInputJack>,
+    held_output: Option<HeldOutputJack>,
     // Not sure why this fails with a lifetime error without the following line, but otherwise
     // everything parses correctly...
     // make_compile: Option<bool>,
@@ -290,8 +291,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             for i in 0..I {
                 if let Ok(a) = self.jack_recv(i) {
                     self.input_buffer[i] = a;
-                }
-                else {
+                } else {
                     self.dropped_packets += 1;
                 }
             }
@@ -304,11 +304,12 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             self.leader_election.reset(time);
         }
         self.interface.poll(time)?;
-        if time % 10000 == 0 {
-            if self.dropped_packets != 0 {
-                info!("{:?} dropped packets: {:?}", self.uuid, self.dropped_packets);
-                self.dropped_packets = 0;
-            }
+        if time % 10000 == 0 && self.dropped_packets != 0 {
+            info!(
+                "{:?} dropped packets: {:?}",
+                self.uuid, self.dropped_packets
+            );
+            self.dropped_packets = 0;
         }
         Ok(())
     }
@@ -320,13 +321,13 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
     fn recv_directive(&mut self) -> Result<Directive, Error> {
         let mut buf = [0; 2048];
         match self.interface.recv_directive(&mut buf) {
-            Ok(size) => match serde_json_core::from_slice(&buf[0..size]) {
-                Ok((out, _)) => {
+            Ok(size) => match postcard::from_bytes(&buf[0..size]) {
+                Ok(out) => {
                     trace!("<= {:?}", out);
                     Ok(out)
                 }
                 Err(e) => {
-                    info!("JSON Parse Error: {:?}", e);
+                    info!("Postcard Parse Error: {:?}", e);
                     Err(Error::Parse)
                 }
             },
@@ -337,9 +338,12 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
     fn send_directive(&mut self, directive: &Directive) -> Result<(), Error> {
         trace!("=> {:?}", directive);
         let mut buf = [0; 2048];
-        match serde_json_core::to_slice(directive, &mut buf) {
-            Ok(len) => self.interface.send_directive(&buf[0..len]),
-            Err(_) => Err(Error::Parse),
+        match postcard::to_slice(directive, &mut buf) {
+            Ok(res) => self.interface.send_directive(res),
+            Err(e) => {
+                info!("Postcard Parse Error: {:?}", e);
+                Err(Error::Parse)
+            }
         }
     }
 
@@ -399,26 +403,26 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         let mut local_state: LocalState = Default::default();
         for i in 0..I {
             if (self.input_patch_enabled & (1 << i)) != 0 {
-                local_state
-                    .held_inputs
-                    .push(HeldInputJack {
+                if local_state.held_input.is_none() {
+                    local_state.held_input = Some(HeldInputJack {
                         uuid: self.uuid.clone(),
                         id: i as u32,
-                    })
-                    .unwrap();
+                    });
+                }
+                local_state.num_held_inputs += 1;
             }
         }
         for i in 0..O {
             if (self.output_patch_enabled & (1 << i)) != 0 {
-                local_state
-                    .held_outputs
-                    .push(HeldOutputJack {
+                if local_state.held_output.is_none() {
+                    local_state.held_output = Some(HeldOutputJack {
                         uuid: self.uuid.clone(),
                         id: i as u32,
                         color: 30,
                         addr: self.interface.jack_addr(i)?,
-                    })
-                    .unwrap();
+                    });
+                }
+                local_state.num_held_outputs += 1;
             }
         }
         self.leader_election.update_local_state(local_state);
