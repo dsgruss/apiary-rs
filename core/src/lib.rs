@@ -305,10 +305,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         }
         self.interface.poll(time)?;
         if time % 10000 == 0 && self.dropped_packets != 0 {
-            info!(
-                "{:?} dropped packets: {:?}",
-                self.uuid, self.dropped_packets
-            );
+            info!("{} dropped packets: {:?}", self.uuid, self.dropped_packets);
             self.dropped_packets = 0;
         }
         Ok(())

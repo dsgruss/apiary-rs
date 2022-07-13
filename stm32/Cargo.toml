@@ -16,7 +16,7 @@ nb = "1"
 stm32f4xx-hal = { version = "0.13", features = ["stm32f429"] }
 
 fugit = "0.3"
-log = "0.4.6"
+log = { version = "0.4.6", features = ["release_max_level_info"] }
 
 heapless = { version = "0.7.0", features = ["serde"] }
 

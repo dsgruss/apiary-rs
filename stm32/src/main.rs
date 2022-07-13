@@ -5,15 +5,15 @@ use panic_semihosting as _;
 // use panic_itm as _;
 // use panic_halt as _;
 
-use cortex_m::{asm, interrupt::Mutex};
-use cortex_m_rt::{entry, exception};
+use cortex_m::interrupt::Mutex;
+use cortex_m_rt::entry;
 use stm32f4xx_hal::{
     adc::{
         config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
         Adc,
     },
     gpio::GpioExt,
-    pac::{interrupt, CorePeripherals, Peripherals, USART3, SYST},
+    pac::{interrupt, CorePeripherals, Peripherals, USART3},
     prelude::*,
     rcc::RccExt,
     serial::Tx,
@@ -62,7 +62,6 @@ impl log::Log for SerialLogger {
 }
 
 static LOGGER: SerialLogger = SerialLogger::new();
-static TIME: Mutex<RefCell<i64>> = Mutex::new(RefCell::new(0));
 
 use apiary_core::{socket_smoltcp::SmoltcpInterface, AudioPacket, Module, Uuid};
 
@@ -71,7 +70,7 @@ use apiary::{Ui, UiPins};
 #[entry]
 fn main() -> ! {
     let p = Peripherals::take().unwrap();
-    let mut cp = CorePeripherals::take().unwrap();
+    let cp = CorePeripherals::take().unwrap();
 
     let rcc = p.RCC.constrain();
     let clocks = rcc
@@ -98,7 +97,6 @@ fn main() -> ! {
     info!("Serial debug active");
 
     let uuid = Uuid::from("hardware");
-    // let addr = String::from("239.1.2.3");
     let rand_source = p.RNG.constrain(&clocks);
 
     let ui_pins = UiPins {
@@ -120,7 +118,7 @@ fn main() -> ! {
         rx_d1: gpioc.pc5,
     };
 
-    let mut rx_ring: [RingEntry<_>; 8] = Default::default();
+    let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 16] = Default::default();
     let (mut eth_dma, _eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
@@ -160,22 +158,29 @@ fn main() -> ! {
 
     let mut packet: AudioPacket = Default::default();
 
-    // let mut timer = cp.SYST.counter_us(&clocks);
-    cp.SYST.set_reload(1000 * (clocks.sysclk().raw() / 8 / 1_000_000) - 1);
-    info!("Clock reload set at {:?}", 1.millis::<1, 1_000_000>().ticks());
-    cp.SYST.enable_counter();
-    cp.SYST.enable_interrupt();
+    let mut timer = cp.SYST.counter_us(&clocks);
+    let mut cycle_timer = p.TIM5.counter_us(&clocks);
     let mut time: i64 = 0;
+    let mut cycle_time: i64 = 0;
     let mut ui_accum = 0;
     let mut send_accum = 0;
     let mut poll_accum = 0;
     let mut adc_accum = 0;
-    // timer.start(1.millis()).unwrap();
+    let mut total_accum: u64 = 0;
+    let mut total_max = 0;
+    timer.start(1.millis()).unwrap();
+    cycle_timer.start(100.millis()).unwrap();
 
     loop {
-        while time >= cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow()) {
-            asm::wfi();
+        // We need to have each update occur as close as possible to the 1 ms mark, however (at
+        // least with the serial monitor on), some cycles will end up taking longer. Here, an
+        // additional timer is used to "catch up" on missed cycles.
+        if cycle_time < time {
+            nb::block!(timer.wait()).unwrap();
+            cycle_time += 1
         }
+        cycle_timer.start(100.millis()).unwrap();
+        let start = cycle_timer.now();
         time += 1;
 
         // let ui_start = timer.now();
@@ -202,21 +207,27 @@ fn main() -> ! {
         // send_accum += (timer.now() - send_start).to_micros();
 
         // let adc_start = timer.now();
-        // sample = adc.convert(&pa0, SampleTime::Cycles_84);
+        sample = adc.convert(&pa0, SampleTime::Cycles_84);
         for frame in &mut packet.data {
             for v in &mut frame.data {
                 *v = 0 as i16;
             }
         }
         // adc_accum += (timer.now() - adc_start).to_micros();
-
+        let end = (cycle_timer.now() - start).to_micros();
+        total_accum += end as u64;
+        if end > total_max {
+            total_max = end;
+        }
         if time % 1000 == 0 {
             info!(
-                "Average times (us): ui {}, send {}, poll {}, adc {}",
+                "Average times (us): ui {}, send {}, poll {}, adc {}, total {}/{}",
                 ui_accum / 1000,
                 send_accum / 1000,
                 poll_accum / 1000,
-                adc_accum / 1000
+                adc_accum / 1000,
+                total_accum / 1000,
+                total_max
             );
             info!("ADC current sample: {:?}", adc.sample_to_millivolts(sample));
             /*
@@ -233,16 +244,11 @@ fn main() -> ! {
             send_accum = 0;
             poll_accum = 0;
             adc_accum = 0;
+            total_accum = 0;
+            total_max = 0;
         }
+        cycle_time += (cycle_timer.now() - start).to_millis() as i64;
     }
-}
-
-#[exception]
-fn SysTick() {
-    cortex_m::interrupt::free(|cs| {
-        let mut time = TIME.borrow(cs).borrow_mut();
-        *time += 1;
-    })
 }
 
 #[interrupt]
