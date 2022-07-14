@@ -21,7 +21,7 @@ use stm32f4xx_hal::{
 };
 
 use core::cell::RefCell;
-use core::fmt::Write;
+use core::fmt::{Debug, Write};
 use fugit::RateExtU32;
 use heapless::spsc::Queue;
 
@@ -215,37 +215,39 @@ fn main() -> ! {
         let start = cycle_timer.now();
         time += 1;
 
-        // let ui_start = timer.now();
+        let ui_start = cycle_timer.now();
         let (changed, sw2, sw4) = ui.poll();
         if changed {
             module.set_input_patch_enabled(0, sw2).unwrap();
             module.set_output_patch_enabled(0, sw4).unwrap();
         }
-        // ui_accum += (timer.now() - ui_start).to_micros();
+        update_time(
+            (cycle_timer.now() - ui_start).to_micros() as i64,
+            &mut curr_stats.ui,
+        );
 
-        // let poll_start = timer.now();
+        let poll_start = cycle_timer.now();
         if let Err(e) = module.poll(time, |input, output| {
             output[0] = input[0];
         }) {
             info!("Data send error: {:?}", e);
         }
-        // let poll_len = (timer.now() - poll_start).to_micros();
-        // poll_accum += poll_len;
-        // if poll_len > 500 {
-        //     info!("Long poll detected: {:?}", poll_len);
-        // }
+        update_time(
+            (cycle_timer.now() - poll_start).to_micros() as i64,
+            &mut curr_stats.poll,
+        );
 
-        // let send_start = timer.now();
-        // send_accum += (timer.now() - send_start).to_micros();
-
-        // let adc_start = timer.now();
+        let adc_start = cycle_timer.now();
         sample = adc.convert(&pa0, SampleTime::Cycles_84);
         for frame in &mut packet.data {
             for v in &mut frame.data {
                 *v = 0 as i16;
             }
         }
-        // adc_accum += (timer.now() - adc_start).to_micros();
+        update_time(
+            (cycle_timer.now() - adc_start).to_micros() as i64,
+            &mut curr_stats.adc,
+        );
         if time % 1000 == 0 {
             info!("total, max (us): {:?}", last_stats);
             info!("ADC current sample: {:?}", adc.sample_to_millivolts(sample));
@@ -269,13 +271,25 @@ fn main() -> ! {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 struct Times {
     ui: (i64, i64),
     send: (i64, i64),
     poll: (i64, i64),
     adc: (i64, i64),
     total: (i64, i64),
+}
+
+impl Debug for Times {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Times")
+            .field("ui", &(self.ui.0 / 1000, self.ui.1))
+            .field("send", &(self.send.0 / 1000, self.send.1))
+            .field("poll", &(self.poll.0 / 1000, self.poll.1))
+            .field("adc", &(self.adc.0 / 1000, self.adc.1))
+            .field("total", &(self.total.0 / 1000, self.total.1))
+            .finish()
+    }
 }
 
 fn update_time(micros: i64, store: &mut (i64, i64)) {
