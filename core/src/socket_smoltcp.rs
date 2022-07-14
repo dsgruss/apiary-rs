@@ -224,7 +224,7 @@ where
 {
     fn poll(&mut self, time: i64) -> Result<bool, Error> {
         match self.iface.poll(Instant::from_millis(time)) {
-            Ok(true) => {
+            Ok(_) => {
                 self.dhcp_poll(time);
                 if self.dhcp_configured {
                     let socket = self.iface.get_socket::<UdpSocket>(self.server_handle);
@@ -237,7 +237,6 @@ where
                 }
                 Ok(true)
             }
-            Ok(false) => Ok(true),
             Err(_) => Err(Error::Network),
         }
     }

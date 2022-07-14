@@ -167,6 +167,11 @@ fn main() -> ! {
     )
     .unwrap();
 
+    // Allow some time for the interface to come up before starting the IP stack
+    let mut cycle_timer = p.TIM5.counter_us(&clocks);
+    cycle_timer.start(2.secs()).unwrap();
+    nb::block!(cycle_timer.wait()).unwrap();
+
     let mut storage = Default::default();
     let mut module: Module<_, _, 1, 1> = Module::new(
         SmoltcpInterface::<_, 1, 1, 3>::new(&mut eth_dma, &mut storage),
@@ -193,7 +198,6 @@ fn main() -> ! {
     let mut packet: AudioPacket = Default::default();
 
     let mut timer = cp.SYST.counter_us(&clocks);
-    let mut cycle_timer = p.TIM5.counter_us(&clocks);
     let mut time: i64 = 0;
     let mut cycle_time: i64 = 0;
     let mut last_stats: Times = Default::default();
