@@ -12,16 +12,18 @@ use stm32f4xx_hal::{
         config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
         Adc,
     },
+    dma::{config, traits::StreamISR, MemoryToPeripheral, Stream3, StreamsTuple, Transfer},
     gpio::GpioExt,
-    pac::{interrupt, CorePeripherals, Peripherals, USART3},
+    pac::{self, interrupt, CorePeripherals, Peripherals, DMA1, USART3},
     prelude::*,
     rcc::RccExt,
-    serial::Tx,
+    serial::{config::DmaConfig, Config, Tx},
 };
 
 use core::cell::RefCell;
 use core::fmt::Write;
 use fugit::RateExtU32;
+use heapless::spsc::Queue;
 
 use stm32_eth::{EthPins, RingEntry};
 
@@ -29,19 +31,16 @@ use stm32_eth::{EthPins, RingEntry};
 extern crate log;
 use log::{Level, LevelFilter, Metadata, Record};
 
-type SerialTx = Tx<USART3, u8>;
+const LOG_BUFFER_SIZE: usize = 1024;
 
-struct SerialLogger {
-    tx: Mutex<RefCell<Option<SerialTx>>>,
-}
+type SerialDma =
+    Transfer<Stream3<DMA1>, 4, Tx<USART3>, MemoryToPeripheral, &'static mut [u8; LOG_BUFFER_SIZE]>;
 
-impl SerialLogger {
-    const fn new() -> SerialLogger {
-        SerialLogger {
-            tx: Mutex::new(RefCell::new(None)),
-        }
-    }
-}
+static TRANSFER: Mutex<RefCell<Option<SerialDma>>> = Mutex::new(RefCell::new(None));
+static LOG_QUEUE: Mutex<RefCell<Queue<u8, LOG_BUFFER_SIZE>>> =
+    Mutex::new(RefCell::new(Queue::new()));
+
+struct SerialLogger;
 
 impl log::Log for SerialLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
@@ -50,9 +49,23 @@ impl log::Log for SerialLogger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
+            let mut s: heapless::String<1024> = Default::default();
+            writeln!(s, "{} - {}", record.level(), record.args()).unwrap();
             cortex_m::interrupt::free(|cs| {
-                if let Some(tx) = self.tx.borrow(cs).borrow_mut().as_mut() {
-                    writeln!(*tx, "{} - {}", record.level(), record.args()).unwrap();
+                if let Some(transfer) = TRANSFER.borrow(cs).borrow_mut().as_mut() {
+                    let mut log_queue = LOG_QUEUE.borrow(cs).borrow_mut();
+                    for b in s.as_bytes() {
+                        if let Err(_) = log_queue.enqueue(*b) {
+                            break;
+                        }
+                    }
+                    // Safety: since the interrupt handler controls the read end of the `log_queue`,
+                    // we send an empty buffer to start another transfer. This will have the effect
+                    // of restarting and overwriting a transfer if one is currently in progress.
+                    unsafe {
+                        static mut BUFFER: [u8; LOG_BUFFER_SIZE] = [0; LOG_BUFFER_SIZE];
+                        transfer.next_transfer(&mut BUFFER).unwrap();
+                    }
                 }
             });
         }
@@ -61,7 +74,7 @@ impl log::Log for SerialLogger {
     fn flush(&self) {}
 }
 
-static LOGGER: SerialLogger = SerialLogger::new();
+static LOGGER: SerialLogger = SerialLogger {};
 
 use apiary_core::{socket_smoltcp::SmoltcpInterface, AudioPacket, Module, Uuid};
 
@@ -86,11 +99,34 @@ fn main() -> ! {
     let gpiod = p.GPIOD.split();
     let gpiog = p.GPIOG.split();
 
-    let tx_pin = gpiod.pd8.into_alternate();
+    let tx_pin = gpiod.pd8;
 
-    let mut tx = p.USART3.tx(tx_pin, 115_200_u32.bps(), &clocks).unwrap();
+    let mut serial_config = Config::default();
+    serial_config.dma = DmaConfig::Tx;
+    let mut tx = p.USART3.tx(tx_pin, serial_config, &clocks).unwrap();
     writeln!(tx, "\n\n ☢️📶📼 v0.1.0\n\n").unwrap();
-    cortex_m::interrupt::free(|cs| *LOGGER.tx.borrow(cs).borrow_mut() = Some(tx));
+
+    let init_buffer =
+        cortex_m::singleton!(: [u8; LOG_BUFFER_SIZE] = [70; LOG_BUFFER_SIZE]).unwrap();
+    let transfer: SerialDma = Transfer::init_memory_to_peripheral(
+        StreamsTuple::new(p.DMA1).3,
+        tx,
+        init_buffer,
+        None,
+        config::DmaConfig::default()
+            .memory_increment(true)
+            .fifo_enable(true)
+            .fifo_error_interrupt(true)
+            .transfer_complete_interrupt(true),
+    );
+    cortex_m::interrupt::free(|cs| {
+        *TRANSFER.borrow(cs).borrow_mut() = Some(transfer);
+    });
+
+    // Safety: It appears that this is the preferred way to start interrupts...
+    unsafe {
+        cortex_m::peripheral::NVIC::unmask(pac::Interrupt::DMA1_STREAM3);
+    }
     log::set_logger(&LOGGER)
         .map(|()| log::set_max_level(LevelFilter::Info))
         .unwrap();
@@ -162,12 +198,8 @@ fn main() -> ! {
     let mut cycle_timer = p.TIM5.counter_us(&clocks);
     let mut time: i64 = 0;
     let mut cycle_time: i64 = 0;
-    let mut ui_accum = 0;
-    let mut send_accum = 0;
-    let mut poll_accum = 0;
-    let mut adc_accum = 0;
-    let mut total_accum: u64 = 0;
-    let mut total_max = 0;
+    let mut last_stats: Times = Default::default();
+    let mut curr_stats: Times = Default::default();
     timer.start(1.millis()).unwrap();
     cycle_timer.start(100.millis()).unwrap();
 
@@ -214,21 +246,8 @@ fn main() -> ! {
             }
         }
         // adc_accum += (timer.now() - adc_start).to_micros();
-        let end = (cycle_timer.now() - start).to_micros();
-        total_accum += end as u64;
-        if end > total_max {
-            total_max = end;
-        }
         if time % 1000 == 0 {
-            info!(
-                "Average times (us): ui {}, send {}, poll {}, adc {}, total {}/{}",
-                ui_accum / 1000,
-                send_accum / 1000,
-                poll_accum / 1000,
-                adc_accum / 1000,
-                total_accum / 1000,
-                total_max
-            );
+            info!("total, max (us): {:?}", last_stats);
             info!("ADC current sample: {:?}", adc.sample_to_millivolts(sample));
             /*
             info!(
@@ -239,16 +258,63 @@ fn main() -> ! {
                 leader_election.voted_for
             );
             */
-
-            ui_accum = 0;
-            send_accum = 0;
-            poll_accum = 0;
-            adc_accum = 0;
-            total_accum = 0;
-            total_max = 0;
+            last_stats = curr_stats;
+            curr_stats = Default::default();
         }
+        update_time(
+            (cycle_timer.now() - start).to_micros() as i64,
+            &mut curr_stats.total,
+        );
         cycle_time += (cycle_timer.now() - start).to_millis() as i64;
     }
+}
+
+#[derive(Default, Debug)]
+struct Times {
+    ui: (i64, i64),
+    send: (i64, i64),
+    poll: (i64, i64),
+    adc: (i64, i64),
+    total: (i64, i64),
+}
+
+fn update_time(micros: i64, store: &mut (i64, i64)) {
+    store.0 += micros;
+    if micros > store.1 {
+        store.1 = micros;
+    }
+}
+
+#[interrupt]
+fn DMA1_STREAM3() {
+    cortex_m::interrupt::free(|cs| {
+        if let Some(transfer) = TRANSFER.borrow(cs).borrow_mut().as_mut() {
+            if Stream3::<pac::DMA1>::get_fifo_error_flag() {
+                transfer.clear_fifo_error_interrupt();
+            }
+            if Stream3::<pac::DMA1>::get_transfer_complete_flag() {
+                transfer.clear_transfer_complete_interrupt();
+                let mut log_queue = LOG_QUEUE.borrow(cs).borrow_mut();
+                if !log_queue.is_empty() {
+                    // Safety: This shouldn't be necessary in the long run: `next_transfer` returns
+                    // the reference to the old buffer, so ideally we would swap them here rather
+                    // than relying on the single reference. This method found in the spi_dma
+                    // example in the hal.
+                    unsafe {
+                        static mut BUFFER: [u8; LOG_BUFFER_SIZE] = [0; LOG_BUFFER_SIZE];
+                        BUFFER = [0; LOG_BUFFER_SIZE];
+                        for b in BUFFER.iter_mut() {
+                            match log_queue.dequeue() {
+                                Some(val) => *b = val,
+                                None => break,
+                            }
+                        }
+                        transfer.next_transfer(&mut BUFFER).unwrap();
+                    }
+                }
+            }
+        }
+    });
 }
 
 #[interrupt]
