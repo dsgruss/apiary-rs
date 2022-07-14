@@ -167,8 +167,6 @@ fn main() -> ! {
     )
     .unwrap();
 
-    eth_dma.enable_interrupt();
-
     let mut storage = Default::default();
     let mut module: Module<_, _, 1, 1> = Module::new(
         SmoltcpInterface::<_, 1, 1, 3>::new(&mut eth_dma, &mut storage),
@@ -329,11 +327,4 @@ fn DMA1_STREAM3() {
             }
         }
     });
-}
-
-#[interrupt]
-fn ETH() {
-    // Clear interrupt flags
-    let p = unsafe { Peripherals::steal() };
-    stm32_eth::eth_interrupt_handler(&p.ETHERNET_DMA);
 }
