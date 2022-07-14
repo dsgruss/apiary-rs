@@ -1,10 +1,10 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
-#[cfg(not(any(feature = "network-smoltcp", feature = "network-native")))]
-compile_error!("You must enable at one network feature");
+#[cfg(not(any(feature = "network-smoltcp", feature = "network-native", feature = "network-local")))]
+compile_error!("You must enable exactly one network feature");
 
-#[cfg(all(feature = "network-smoltcp", feature = "network-native"))]
-compile_error!("You must select at least one network feature");
+#[cfg(all(feature = "network-smoltcp", feature = "network-native", feature = "network-local"))]
+compile_error!("You must enable exactly one network feature");
 
 #[macro_use]
 extern crate log;
@@ -16,6 +16,13 @@ pub mod socket_native;
 
 #[cfg(feature = "network-smoltcp")]
 pub mod socket_smoltcp;
+
+#[cfg(feature = "network-local")]
+pub mod socket_local;
+
+#[cfg(feature = "network-local")]
+#[macro_use]
+extern crate lazy_static;
 
 use heapless::String;
 use leader_election::LeaderElection;

@@ -1,4 +1,4 @@
-use apiary_core::{socket_native::NativeInterface, Module, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
+use apiary_core::{Module, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
 use eframe::egui;
 use std::{
     f32::consts::PI,
@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::{DisplayModule, Jack, Knob, UiUpdate};
+use crate::common::{DisplayModule, Jack, Knob, SelectedInterface, UiUpdate};
 
 struct LadderFilter {
     omega0: f32,
@@ -107,7 +107,7 @@ impl Filter {
 
         thread::spawn(move || {
             let mut module: Module<_, _, 1, 1> = Module::new(
-                NativeInterface::new().unwrap(),
+                SelectedInterface::new().unwrap(),
                 rand::thread_rng(),
                 "Filter".into(),
                 0,

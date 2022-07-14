@@ -1,4 +1,4 @@
-use apiary_core::{socket_native::NativeInterface, Module};
+use apiary_core::{Module};
 use eframe::egui;
 use std::{
     sync::mpsc::{channel, Receiver, Sender, TryRecvError},
@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::DisplayModule;
+use crate::common::{DisplayModule, SelectedInterface};
 
 pub struct MODULENAME {
     width: f32,
@@ -33,7 +33,7 @@ fn process(rx: Receiver<()>) {
     let mut time: i64 = 0;
 
     let mut module: Module<_, _, 0, 3> = Module::new(
-        NativeInterface::new().unwrap(),
+        SelectedInterface::new().unwrap(),
         rand::thread_rng(),
         "MODULENAME".into(),
         time,

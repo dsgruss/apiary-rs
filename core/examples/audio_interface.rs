@@ -1,4 +1,4 @@
-use apiary_core::{socket_native::NativeInterface, AudioFrame, Module};
+use apiary_core::{AudioFrame, Module};
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     Device, Sample, SampleFormat, Stream, StreamConfig,
@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::{DisplayModule, Jack};
+use crate::common::{DisplayModule, Jack, SelectedInterface};
 
 pub struct AudioInterface {
     width: f32,
@@ -116,7 +116,7 @@ fn process(ui_rx: Receiver<bool>, audio_tx: SyncSender<AudioFrame>) {
     let mut dropped_frames = 0;
 
     let mut module: Module<_, _, 1, 0> = Module::new(
-        NativeInterface::new().unwrap(),
+        SelectedInterface::new().unwrap(),
         rand::thread_rng(),
         "audio_interface".into(),
         time,

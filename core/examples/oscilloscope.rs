@@ -1,4 +1,4 @@
-use apiary_core::{socket_native::NativeInterface, Module, CHANNELS};
+use apiary_core::{Module, CHANNELS};
 use eframe::egui::{
     self,
     plot::{Line, Plot, Value, Values},
@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::{DisplayModule, Jack};
+use crate::common::{DisplayModule, Jack, SelectedInterface};
 
 pub struct Oscilloscope {
     width: f32,
@@ -30,7 +30,7 @@ impl Oscilloscope {
 
         thread::spawn(move || {
             let mut module: Module<_, _, 1, 0> = Module::new(
-                NativeInterface::new().unwrap(),
+                SelectedInterface::new().unwrap(),
                 rand::thread_rng(),
                 "Oscilloscope".into(),
                 0,

@@ -1,6 +1,15 @@
 use std::f32::consts::PI;
-
 use eframe::egui;
+
+#[cfg(feature = "network-local")]
+use apiary_core::socket_local::LocalInterface;
+#[cfg(feature = "network-local")]
+pub type SelectedInterface<const I: usize, const O: usize> = LocalInterface<I, O>;
+
+#[cfg(feature = "network-native")]
+use apiary_core::socket_native::NativeInterface;
+#[cfg(feature = "network-native")]
+pub type SelectedInterface<const I: usize, const O: usize> = NativeInterface<I, O>;
 
 pub trait DisplayModule {
     fn width(&self) -> f32;

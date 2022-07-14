@@ -1,7 +1,4 @@
-use apiary_core::{
-    midi_note_to_voct, socket_native::NativeInterface, AudioFrame, AudioPacket, Module, BLOCK_SIZE,
-    CHANNELS,
-};
+use apiary_core::{midi_note_to_voct, AudioFrame, AudioPacket, Module, BLOCK_SIZE, CHANNELS};
 use eframe::egui;
 use midir::{MidiInput, MidiInputConnection};
 use std::{
@@ -10,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::{DisplayModule, Jack, UiUpdate};
+use crate::common::{DisplayModule, Jack, SelectedInterface, UiUpdate};
 
 pub struct MidiToCv {
     width: f32,
@@ -97,7 +94,7 @@ fn process(midi_rx: Receiver<MidiMessage>, ui_rx: Receiver<UiUpdate>) {
     let mut voices: [Voice; CHANNELS] = [Default::default(); CHANNELS];
 
     let mut module: Module<_, _, 0, 3> = Module::new(
-        NativeInterface::new().unwrap(),
+        SelectedInterface::new().unwrap(),
         rand::thread_rng(),
         "Midi_to_cv".into(),
         time,

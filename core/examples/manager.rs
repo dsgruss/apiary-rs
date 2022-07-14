@@ -1,4 +1,4 @@
-use apiary_core::{socket_native::NativeInterface, Module};
+use apiary_core::Module;
 use eframe::egui;
 use simple_logger::SimpleLogger;
 use std::{
@@ -8,7 +8,7 @@ use std::{
 };
 
 mod common;
-use common::DisplayModule;
+use common::{DisplayModule, SelectedInterface};
 
 mod midi_to_cv;
 use midi_to_cv::MidiToCv;
@@ -47,7 +47,7 @@ fn main() {
 
     thread::spawn(move || {
         let mut module: Module<_, _, 0, 0> = Module::new(
-            NativeInterface::new().unwrap(),
+            SelectedInterface::new().unwrap(),
             rand::thread_rng(),
             "Manager".into(),
             0,

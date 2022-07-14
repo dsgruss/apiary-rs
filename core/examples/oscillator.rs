@@ -1,6 +1,4 @@
-use apiary_core::{
-    socket_native::NativeInterface, voct_to_frequency, Module, BLOCK_SIZE, CHANNELS, SAMPLE_RATE,
-};
+use apiary_core::{voct_to_frequency, Module, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
 use eframe::egui;
 use std::{
     f32::consts::PI,
@@ -9,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::{DisplayModule, Jack, UiUpdate};
+use crate::common::{DisplayModule, Jack, SelectedInterface, UiUpdate};
 
 pub struct Oscillator {
     width: f32,
@@ -30,7 +28,7 @@ impl Oscillator {
 
         thread::spawn(move || {
             let mut module: Module<_, _, 1, 4> = Module::new(
-                NativeInterface::new().unwrap(),
+                SelectedInterface::new().unwrap(),
                 rand::thread_rng(),
                 "Oscillator".into(),
                 0,

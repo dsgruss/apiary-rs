@@ -1,4 +1,4 @@
-use apiary_core::{socket_native::NativeInterface, Module, BLOCK_SIZE, CHANNELS};
+use apiary_core::{Module, BLOCK_SIZE, CHANNELS};
 use eframe::egui;
 use std::{
     sync::mpsc::{channel, Receiver, Sender, TryRecvError},
@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::{DisplayModule, Jack, UiUpdate};
+use crate::common::{DisplayModule, Jack, SelectedInterface, UiUpdate};
 
 pub struct Mixer {
     width: f32,
@@ -23,7 +23,7 @@ impl Mixer {
 
         thread::spawn(move || {
             let mut module: Module<_, _, 2, 1> = Module::new(
-                NativeInterface::new().unwrap(),
+                SelectedInterface::new().unwrap(),
                 rand::thread_rng(),
                 "Mixer".into(),
                 0,
