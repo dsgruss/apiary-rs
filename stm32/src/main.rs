@@ -49,7 +49,7 @@ impl log::Log for SerialLogger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            let mut s: heapless::String<1024> = Default::default();
+            let mut s: heapless::String<LOG_BUFFER_SIZE> = Default::default();
             writeln!(s, "{} - {}", record.level(), record.args()).unwrap();
             cortex_m::interrupt::free(|cs| {
                 if let Some(transfer) = TRANSFER.borrow(cs).borrow_mut().as_mut() {
