@@ -141,9 +141,13 @@ impl eframe::App for Manager {
                         self.window_count += 1;
                     }
                     if ui.button("Audio Interface").clicked() {
-                        self.windows
-                            .push((self.window_count, Box::new(AudioInterface::new())));
-                        self.window_count += 1;
+                        match AudioInterface::new() {
+                            Ok(a) => {
+                                self.windows.push((self.window_count, Box::new(a)));
+                                self.window_count += 1;
+                            }
+                            Err(e) => info!("Failed to open AudioInterface: {:?}", e),
+                        }
                     }
                     if ui.button("Oscilloscope").clicked() {
                         self.windows

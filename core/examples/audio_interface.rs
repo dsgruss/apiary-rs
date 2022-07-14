@@ -5,6 +5,7 @@ use cpal::{
 };
 use eframe::egui;
 use std::{
+    error::Error,
     sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender, TryRecvError, TrySendError},
     thread,
     time::{Duration, Instant},
@@ -65,12 +66,21 @@ where
 }
 
 impl AudioInterface {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, Box<dyn Error>> {
         let host = cpal::default_host();
-        let device = host.default_output_device().unwrap();
-        let mut configs = device.supported_output_configs().unwrap();
-        let supported_config = configs.next().unwrap().with_max_sample_rate();
-        info!("{:?}: {:?}", device.name().unwrap(), supported_config);
+        let device = host.default_output_device().ok_or(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No default host device found",
+        ))?;
+        let mut configs = device.supported_output_configs()?;
+        let supported_config = configs
+            .next()
+            .ok_or(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "No supported configs found",
+            ))?
+            .with_max_sample_rate();
+        info!("{:?}: {:?}", device.name()?, supported_config);
 
         let sample_format = supported_config.sample_format();
         let config = supported_config.into();
@@ -84,19 +94,19 @@ impl AudioInterface {
             SampleFormat::U16 => run::<u16>(&device, &config, audio_rx),
         };
 
-        audio_stream.play().unwrap();
+        audio_stream.play()?;
 
         let (ui_tx, ui_rx): (Sender<bool>, Receiver<bool>) = channel();
 
         thread::spawn(move || process(ui_rx, audio_tx));
 
-        AudioInterface {
+        Ok(AudioInterface {
             width: 5.0,
             open: true,
             input_checked: false,
             tx: ui_tx,
             _audio_stream: audio_stream,
-        }
+        })
     }
 }
 
@@ -164,7 +174,10 @@ impl DisplayModule for AudioInterface {
             .add(Jack::new(&mut self.input_checked, "Input"))
             .changed()
         {
-            self.tx.send(self.input_checked).unwrap();
+            if let Err(e) = self.tx.send(self.input_checked) {
+                info!("Ui channel closed: {:?}", e);
+                self.open = false;
+            }
         }
     }
 }
