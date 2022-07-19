@@ -12,7 +12,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::common::{DisplayModule, Jack, SelectedInterface};
+use crate::{
+    common::{Jack, SelectedInterface},
+    display_module::DisplayHandler,
+};
 
 pub struct Oscilloscope {
     width: f32,
@@ -82,7 +85,7 @@ impl Oscilloscope {
     }
 }
 
-impl DisplayModule for Oscilloscope {
+impl DisplayHandler for Oscilloscope {
     fn width(&self) -> f32 {
         self.width
     }

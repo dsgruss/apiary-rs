@@ -25,8 +25,8 @@ use filter::Filter;
 mod audio_interface;
 use audio_interface::AudioInterface;
 
-// mod oscilloscope;
-// use oscilloscope::Oscilloscope;
+mod oscilloscope;
+use oscilloscope::Oscilloscope;
 
 mod display_module;
 use display_module::DisplayHandler;
@@ -150,11 +150,11 @@ impl eframe::App for Manager {
                             Err(e) => info!("Failed to open AudioInterface: {:?}", e),
                         }
                     }
-                    // if ui.button("Oscilloscope").clicked() {
-                    //     self.windows
-                    //         .push((self.window_count, Box::new(Oscilloscope::new())));
-                    //     self.window_count += 1;
-                    // }
+                    if ui.button("Oscilloscope").clicked() {
+                        self.windows
+                            .push((self.window_count, Box::new(Oscilloscope::new())));
+                        self.window_count += 1;
+                    }
                     ui.add_space(100.0);
                     ui.label(format!("{}", self.status));
                 },
