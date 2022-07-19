@@ -1,4 +1,4 @@
-use apiary_core::{voct_to_frequency, AudioPacket, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
+use apiary_core::{voct_to_frequency, AudioPacket, SampleType, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
 use std::f32::consts::PI;
 
 use crate::display_module::{DisplayModule, Processor};
@@ -46,7 +46,7 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Oscillator {
     ) {
         for i in 0..BLOCK_SIZE {
             for j in 0..CHANNELS {
-                let a = 8000.0;
+                let a = SampleType::MAX as f32 * 0.90;
                 output[SIN_OUTPUT].data[i].data[j] =
                     (a * (2.0 * PI * self.phase[j]).sin()).round() as i16;
                 output[TRI_OUTPUT].data[i].data[j] = if self.phase[j] < 0.5 {
