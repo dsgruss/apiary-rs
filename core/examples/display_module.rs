@@ -99,7 +99,13 @@ impl<const I: usize, const O: usize, const P: usize> DisplayModule<I, O, P> {
         let (ui_tx, ui_rx): (Sender<PatchUpdate>, Receiver<PatchUpdate>) = channel();
         self.tx = Some(ui_tx);
         let name = self.name.clone();
-        thread::spawn(move || process(ui_rx, &name, p));
+        let mut params = [0.0; P];
+        for i in 0..P {
+            if let Some(v) = &self.params[i] {
+                params[i] = v.val;
+            }
+        }
+        thread::spawn(move || process(ui_rx, &name, params, p));
         self
     }
 }
@@ -116,6 +122,7 @@ struct Param {
 fn process<const I: usize, const O: usize, const P: usize, T: Processor<I, O, P>>(
     rx: Receiver<PatchUpdate>,
     name: &str,
+    mut params: [f32; P],
     mut p: T,
 ) {
     let start = Instant::now();
@@ -127,7 +134,6 @@ fn process<const I: usize, const O: usize, const P: usize, T: Processor<I, O, P>
         name.into(),
         time,
     );
-    let mut params = [0.0; P];
 
     'outer: loop {
         while time < start.elapsed().as_millis() as i64 {

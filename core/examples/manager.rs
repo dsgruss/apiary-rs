@@ -10,6 +10,7 @@ use std::{
 mod audio_interface;
 mod common;
 mod display_module;
+mod envelope;
 mod filter;
 mod midi_to_cv;
 mod mixer;
@@ -19,6 +20,7 @@ mod oscilloscope;
 use audio_interface::AudioInterface;
 use common::SelectedInterface;
 use display_module::DisplayHandler;
+use envelope::Envelope;
 use filter::Filter;
 use midi_to_cv::MidiToCv;
 use mixer::Mixer;
@@ -122,6 +124,11 @@ impl eframe::App for Manager {
                     if ui.button("Oscillator").clicked() {
                         self.windows
                             .push((self.window_count, Box::new(Oscillator::init())));
+                        self.window_count += 1;
+                    }
+                    if ui.button("Envelope").clicked() {
+                        self.windows
+                            .push((self.window_count, Box::new(Envelope::init())));
                         self.window_count += 1;
                     }
                     if ui.button("Mixer").clicked() {

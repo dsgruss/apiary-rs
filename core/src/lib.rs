@@ -40,7 +40,7 @@ use zerocopy::{AsBytes, FromBytes};
 
 pub const CHANNELS: usize = 8;
 pub const BLOCK_SIZE: usize = 48;
-type SampleType = i16;
+pub type SampleType = i16;
 
 #[cfg(feature = "network-native")]
 const PREFERRED_SUBNET: &str = "10.0.0.0/8";
