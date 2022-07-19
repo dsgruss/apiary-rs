@@ -7,29 +7,23 @@ use std::{
     time::{Duration, Instant},
 };
 
-mod common;
-use common::SelectedInterface;
-
-mod midi_to_cv;
-use midi_to_cv::MidiToCv;
-
-mod oscillator;
-use oscillator::Oscillator;
-
-mod mixer;
-use mixer::Mixer;
-
-mod filter;
-use filter::Filter;
-
 mod audio_interface;
-use audio_interface::AudioInterface;
-
-mod oscilloscope;
-use oscilloscope::Oscilloscope;
-
+mod common;
 mod display_module;
+mod filter;
+mod midi_to_cv;
+mod mixer;
+mod oscillator;
+mod oscilloscope;
+
+use audio_interface::AudioInterface;
+use common::SelectedInterface;
 use display_module::DisplayHandler;
+use filter::Filter;
+use midi_to_cv::MidiToCv;
+use mixer::Mixer;
+use oscillator::Oscillator;
+use oscilloscope::Oscilloscope;
 
 #[macro_use]
 extern crate log;
@@ -40,9 +34,6 @@ fn main() {
         .without_timestamps()
         .init()
         .unwrap();
-
-    let grid_size = (36.0, 19.0);
-    let grid_pos = (0.0, 0.0);
 
     let (tx, rx) = channel();
 
@@ -71,10 +62,12 @@ fn main() {
         }
     });
 
-    let mut options = eframe::NativeOptions::default();
-    options.initial_window_size = Some([grid_size.0 * 50.0 - 10.0, grid_size.1 * 50.0].into());
-    options.initial_window_pos = Some([grid_pos.0 * 50.0 + 15.0, grid_pos.1 * 50.0 + 10.0].into());
-    options.resizable = false;
+    let options = eframe::NativeOptions {
+        initial_window_size: Some([1790.0, 950.0].into()),
+        initial_window_pos: Some([15.0, 10.0].into()),
+        resizable: false,
+        ..eframe::NativeOptions::default()
+    };
     eframe::run_native(
         "Module Test Sandbox",
         options,
