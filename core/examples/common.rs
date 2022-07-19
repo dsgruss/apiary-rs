@@ -1,5 +1,5 @@
-use std::f32::consts::PI;
 use eframe::egui;
+use std::f32::consts::PI;
 
 #[cfg(feature = "network-local")]
 use apiary_core::socket_local::LocalInterface;
@@ -10,25 +10,6 @@ pub type SelectedInterface<const I: usize, const O: usize> = LocalInterface<I, O
 use apiary_core::socket_native::NativeInterface;
 #[cfg(feature = "network-native")]
 pub type SelectedInterface<const I: usize, const O: usize> = NativeInterface<I, O>;
-
-pub trait DisplayModule {
-    fn width(&self) -> f32;
-    fn is_open(&self) -> bool;
-    fn update(&mut self, ui: &mut egui::Ui);
-}
-
-#[derive(Debug)]
-pub struct UiUpdate {
-    pub input: bool,
-    pub id: usize,
-    pub on: bool,
-}
-
-impl UiUpdate {
-    pub fn new(input: bool, id: usize, on: bool) -> Self {
-        UiUpdate { input, id, on }
-    }
-}
 
 pub struct Jack<'a> {
     on: &'a mut bool,
@@ -83,6 +64,7 @@ impl<'a> egui::Widget for Jack<'a> {
 pub struct Knob<'a> {
     value: &'a mut f32,
     text: egui::WidgetText,
+    unit: String,
     from: f32,
     to: f32,
     log: bool,
@@ -94,6 +76,7 @@ impl<'a> Knob<'a> {
     pub fn new(
         value: &'a mut f32,
         text: impl Into<egui::WidgetText>,
+        unit: String,
         from: f32,
         to: f32,
         log: bool,
@@ -108,6 +91,7 @@ impl<'a> Knob<'a> {
         Knob {
             value,
             text: text.into(),
+            unit,
             from,
             to,
             log,
@@ -151,7 +135,7 @@ impl<'a> egui::Widget for Knob<'a> {
         }
         if response.changed() {
             egui::show_tooltip(ui.ctx(), egui::Id::new("value"), |ui| {
-                ui.label(format!("{:.1}", *self.value));
+                ui.label(format!("{:.1}{}", *self.value, self.unit));
             });
         }
         ui.label(self.text);

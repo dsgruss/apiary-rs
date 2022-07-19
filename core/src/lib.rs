@@ -1,9 +1,17 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
-#[cfg(not(any(feature = "network-smoltcp", feature = "network-native", feature = "network-local")))]
+#[cfg(not(any(
+    feature = "network-smoltcp",
+    feature = "network-native",
+    feature = "network-local"
+)))]
 compile_error!("You must enable exactly one network feature");
 
-#[cfg(all(feature = "network-smoltcp", feature = "network-native", feature = "network-local"))]
+#[cfg(all(
+    feature = "network-smoltcp",
+    feature = "network-native",
+    feature = "network-local"
+))]
 compile_error!("You must enable exactly one network feature");
 
 #[macro_use]

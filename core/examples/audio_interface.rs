@@ -1,25 +1,15 @@
-use apiary_core::{AudioFrame, Module};
+use apiary_core::{AudioFrame, AudioPacket};
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     Device, Sample, SampleFormat, Stream, StreamConfig,
 };
-use eframe::egui;
 use std::{
     error::Error,
-    sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender, TryRecvError, TrySendError},
-    thread,
-    time::{Duration, Instant},
+    sync::{mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError}},
+    time::Instant, io::ErrorKind, io
 };
 
-use crate::common::{DisplayModule, Jack, SelectedInterface};
-
-pub struct AudioInterface {
-    width: f32,
-    open: bool,
-    tx: Sender<bool>,
-    input_checked: bool,
-    _audio_stream: Stream,
-}
+use crate::display_module::{DisplayModule, Processor};
 
 fn run<T>(device: &Device, config: &StreamConfig, audio_rx: Receiver<AudioFrame>) -> Stream
 where
@@ -65,18 +55,31 @@ where
         .unwrap()
 }
 
+pub struct AudioInterface {
+    time: i64,
+    dropped_frames: i64,
+    audio_tx: SyncSender<AudioFrame>,
+}
+
+const NUM_PARAMS: usize = 0;
+
+const IN_INPUT: usize = 0;
+const NUM_INPUTS: usize = 1;
+
+const NUM_OUTPUTS: usize = 0;
+
 impl AudioInterface {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
+    pub fn init() -> Result<DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS>, Box<dyn Error>> {
         let host = cpal::default_host();
-        let device = host.default_output_device().ok_or(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
+        let device = host.default_output_device().ok_or(io::Error::new(
+            ErrorKind::NotFound,
             "No default host device found",
         ))?;
         let mut configs = device.supported_output_configs()?;
         let supported_config = configs
             .next()
-            .ok_or(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
+            .ok_or(io::Error::new(
+                ErrorKind::NotFound,
                 "No supported configs found",
             ))?
             .with_max_sample_rate();
@@ -96,88 +99,42 @@ impl AudioInterface {
 
         audio_stream.play()?;
 
-        let (ui_tx, ui_rx): (Sender<bool>, Receiver<bool>) = channel();
-
-        thread::spawn(move || process(ui_rx, audio_tx));
-
-        Ok(AudioInterface {
-            width: 5.0,
-            open: true,
-            input_checked: false,
-            tx: ui_tx,
-            _audio_stream: audio_stream,
-        })
+        Ok(DisplayModule::new()
+            .name("Audio Interface")
+            .input(IN_INPUT, "Input")
+            .stream_store(audio_stream)
+            .start(AudioInterface {
+                time: 0,
+                dropped_frames: 0,
+                audio_tx,
+            }))
     }
 }
 
-fn process(ui_rx: Receiver<bool>, audio_tx: SyncSender<AudioFrame>) {
-    let start = Instant::now();
-    let mut time: i64 = 0;
-    let mut dropped_frames = 0;
-
-    let mut module: Module<_, _, 1, 0> = Module::new(
-        SelectedInterface::new().unwrap(),
-        rand::thread_rng(),
-        "audio_interface".into(),
-        time,
-    );
-
-    'outer: loop {
-        while time < start.elapsed().as_millis() as i64 {
-            if time % 10000 == 0 {
-                if dropped_frames != 0 {
-                    info!("Module dropped frames: {:?}", dropped_frames);
-                    dropped_frames = 0;
-                }
-            }
-            match ui_rx.try_recv() {
-                Ok(checked) => {
-                    module.set_input_patch_enabled(0, checked).unwrap();
-                }
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => break 'outer,
-            }
-            module
-                .poll(time, |input, _| {
-                    for frame in input[0].data {
-                        match audio_tx.try_send(frame) {
-                            Ok(()) => {}
-                            Err(TrySendError::Full(_)) => {
-                                dropped_frames += 1;
-                            }
-                            Err(TrySendError::Disconnected(_)) => {
-                                panic!("Audio channel disconnected")
-                            }
-                        }
-                    }
-                })
-                .unwrap();
-            time += 1;
-        }
-        thread::sleep(Duration::from_millis(0));
-    }
-}
-
-impl DisplayModule for AudioInterface {
-    fn width(&self) -> f32 {
-        self.width
-    }
-
-    fn is_open(&self) -> bool {
-        self.open
-    }
-
-    fn update(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Audio Interface");
-        ui.add_space(20.0);
-        if ui
-            .add(Jack::new(&mut self.input_checked, "Input"))
-            .changed()
-        {
-            if let Err(e) = self.tx.send(self.input_checked) {
-                info!("Ui channel closed: {:?}", e);
-                self.open = false;
+impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for AudioInterface {
+    fn process(
+        &mut self,
+        input: &[AudioPacket; NUM_INPUTS],
+        _output: &mut [AudioPacket; NUM_OUTPUTS],
+        _params: &[f32; NUM_PARAMS],
+    ) {
+        if self.time % 10000 == 0 {
+            if self.dropped_frames != 0 {
+                info!("Module dropped frames: {:?}", self.dropped_frames);
+                self.dropped_frames = 0;
             }
         }
+        for frame in input[IN_INPUT].data {
+            match self.audio_tx.try_send(frame) {
+                Ok(()) => {}
+                Err(TrySendError::Full(_)) => {
+                    self.dropped_frames += 1;
+                }
+                Err(TrySendError::Disconnected(_)) => {
+                    panic!("Audio channel disconnected")
+                }
+            }
+        }
+        self.time += 1;
     }
 }

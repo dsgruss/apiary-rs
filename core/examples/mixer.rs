@@ -1,127 +1,43 @@
-use apiary_core::{Module, BLOCK_SIZE, CHANNELS};
-use eframe::egui;
-use std::{
-    sync::mpsc::{channel, Receiver, Sender, TryRecvError},
-    thread,
-    time::{Duration, Instant},
-};
+use apiary_core::{AudioPacket, BLOCK_SIZE, CHANNELS};
 
-use crate::common::{DisplayModule, Jack, SelectedInterface, UiUpdate};
+use crate::display_module::{DisplayModule, Processor};
 
-pub struct Mixer {
-    width: f32,
-    open: bool,
-    tx: Sender<UiUpdate>,
-    input_checked: bool,
-    gate_checked: bool,
-    output_checked: bool,
-}
+pub struct Mixer;
+
+const NUM_PARAMS: usize = 0;
+
+const IN_INPUT: usize = 0;
+const LEVEL_INPUT: usize = 1;
+const NUM_INPUTS: usize = 2;
+
+const MIX_OUTPUT: usize = 0;
+const NUM_OUTPUTS: usize = 1;
+
 
 impl Mixer {
-    pub fn new() -> Self {
-        let (ui_tx, ui_rx): (Sender<UiUpdate>, Receiver<UiUpdate>) = channel();
-
-        thread::spawn(move || {
-            let mut module: Module<_, _, 2, 1> = Module::new(
-                SelectedInterface::new().unwrap(),
-                rand::thread_rng(),
-                "Mixer".into(),
-                0,
-            );
-            let start = Instant::now();
-            let mut time: i64 = 0;
-
-            'outer: loop {
-                while time < start.elapsed().as_millis() as i64 {
-                    match ui_rx.try_recv() {
-                        Ok(msg) => {
-                            if msg.input {
-                                if let Err(e) = module.set_input_patch_enabled(msg.id, msg.on) {
-                                    info!("Error {:?}", e);
-                                }
-                            } else {
-                                if let Err(e) = module.set_output_patch_enabled(msg.id, msg.on) {
-                                    info!("Error {:?}", e);
-                                }
-                            }
-                        }
-                        Err(TryRecvError::Empty) => {}
-                        Err(TryRecvError::Disconnected) => break 'outer,
-                    }
-                    module
-                        .poll(time, |input, output| {
-                            for i in 0..BLOCK_SIZE {
-                                for j in 0..CHANNELS {
-                                    output[0].data[i].data[j] = (input[0].data[i].data[j] as i32
-                                        * input[1].data[i].data[j] as i32
-                                        >> 16)
-                                        as i16;
-                                }
-                            }
-                        })
-                        .unwrap();
-                    time += 1;
-                }
-                thread::sleep(Duration::from_millis(0));
-            }
-        });
-
-        Mixer {
-            width: 5.0,
-            open: true,
-            tx: ui_tx,
-            input_checked: false,
-            gate_checked: false,
-            output_checked: false,
-        }
+    pub fn init() -> DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> {
+        DisplayModule::new()
+            .name("Mixer")
+            .input(IN_INPUT, "Input")
+            .input(LEVEL_INPUT, "Level")
+            .output(MIX_OUTPUT, "Mix Out")
+            .start(Mixer {})
     }
 }
 
-impl DisplayModule for Mixer {
-    fn width(&self) -> f32 {
-        self.width
-    }
-
-    fn is_open(&self) -> bool {
-        self.open
-    }
-
-    fn update(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Mixer");
-        ui.add_space(20.0);
-        if ui
-            .add(Jack::new(&mut self.input_checked, "Input"))
-            .changed()
-        {
-            self.tx
-                .send(UiUpdate {
-                    input: true,
-                    id: 0,
-                    on: self.input_checked,
-                })
-                .unwrap();
-        }
-        if ui.add(Jack::new(&mut self.gate_checked, "Gate")).changed() {
-            self.tx
-                .send(UiUpdate {
-                    input: true,
-                    id: 1,
-                    on: self.gate_checked,
-                })
-                .unwrap();
-        }
-        ui.add_space(20.0);
-        if ui
-            .add(Jack::new(&mut self.output_checked, "Output"))
-            .changed()
-        {
-            self.tx
-                .send(UiUpdate {
-                    input: false,
-                    id: 0,
-                    on: self.output_checked,
-                })
-                .unwrap();
+impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Mixer {
+    fn process(
+        &mut self,
+        input: &[AudioPacket; NUM_INPUTS],
+        output: &mut [AudioPacket; NUM_OUTPUTS],
+        _params: &[f32; NUM_PARAMS],
+    ) {
+        for i in 0..BLOCK_SIZE {
+            for j in 0..CHANNELS {
+                output[MIX_OUTPUT].data[i].data[j] = (input[IN_INPUT].data[i].data[j] as i32
+                    * input[LEVEL_INPUT].data[i].data[j] as i32
+                    >> 16) as i16;
+            }
         }
     }
 }
