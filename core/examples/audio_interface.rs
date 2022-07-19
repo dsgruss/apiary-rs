@@ -90,8 +90,11 @@ impl AudioInterface {
         let sample_format = supported_config.sample_format();
         let config = supported_config.into();
 
+        // Currently, the audio interface seems to be running every-so-slightly slower than the
+        // expected 48,000 Hz (Dropping 48 frames or 1 ms every ten seconds on average), so we
+        // increase the buffer size here to compensate.
         let (audio_tx, audio_rx): (SyncSender<AudioFrame>, Receiver<AudioFrame>) =
-            sync_channel(2000);
+            sync_channel(20000);
 
         let audio_stream = match sample_format {
             SampleFormat::F32 => run::<f32>(&device, &config, audio_rx),
