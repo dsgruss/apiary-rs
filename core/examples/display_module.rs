@@ -204,7 +204,9 @@ impl<const I: usize, const O: usize, const P: usize> DisplayHandler for DisplayM
                     ))
                     .changed()
                 {
-                    self.open = tx.send(PatchUpdate::Output(i, self.output_checks[i])).is_ok();
+                    self.open = tx
+                        .send(PatchUpdate::Output(i, self.output_checks[i]))
+                        .is_ok();
                 }
             }
         }

@@ -5,8 +5,10 @@ use cpal::{
 };
 use std::{
     error::Error,
-    sync::{mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError}},
-    time::Instant, io::ErrorKind, io
+    io,
+    io::ErrorKind,
+    sync::mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError},
+    time::Instant,
 };
 
 use crate::display_module::{DisplayModule, Processor};

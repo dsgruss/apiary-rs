@@ -13,7 +13,6 @@ const NUM_INPUTS: usize = 2;
 const MIX_OUTPUT: usize = 0;
 const NUM_OUTPUTS: usize = 1;
 
-
 impl Mixer {
     pub fn init() -> DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> {
         DisplayModule::new()
