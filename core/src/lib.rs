@@ -69,6 +69,17 @@ pub fn voct_to_freq_scale(v_oct: f32) -> f32 {
     powf(2.0, (v_oct) / (512.0 * 12.0))
 }
 
+pub fn softclip(x: f32) -> f32 {
+    let y = if x < -3.0 {
+        -3.0
+    } else if x > 3.0 {
+        3.0
+    } else {
+        x
+    };
+    y * (27.0 + y * y) / (27.0 + 9.0 * y * y)
+}
+
 const SW: usize = 48;
 pub type Uuid = String<SW>;
 type JackId = u32;

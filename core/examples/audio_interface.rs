@@ -1,4 +1,4 @@
-use apiary_core::{AudioFrame, AudioPacket};
+use apiary_core::{AudioFrame, AudioPacket, softclip};
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     Device, Sample, SampleFormat, Stream, StreamConfig,
@@ -33,11 +33,11 @@ where
                 for i in 0..(data.len() / 2) {
                     let sample = match audio_rx.try_recv() {
                         Ok(v) => {
-                            let mut avg: i32 = 0;
+                            let mut avg: f32 = 0.0;
                             for val in v.data {
-                                avg += val as i32;
+                                avg += val as f32;
                             }
-                            let sample = (avg >> 3) as i16;
+                            let sample = (softclip(avg / i16::MAX as f32) * i16::MAX as f32) as i16;
                             Sample::from(&sample)
                         }
                         Err(TryRecvError::Empty) => {
