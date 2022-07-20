@@ -281,6 +281,7 @@ pub struct Module<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> 
     output_buffer: [AudioPacket; O],
     dropped_packets: u32,
     patch_state: PatchState,
+    input_colors: [u16; I],
 }
 
 impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> {
@@ -297,6 +298,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             output_buffer: [Default::default(); O],
             dropped_packets: 0,
             patch_state: PatchState::Idle,
+            input_colors: [0; I],
         }
     }
 
@@ -337,7 +339,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                     self.input_buffer[i] = a;
                     let avg = self.input_buffer[i].avg();
                     let c: Srgb =
-                        Hsv::new(self.color as f32, 1.0, avg * 16.0 / i16::MAX as f32).into_color();
+                        Hsv::new(self.input_colors[i] as f32, 1.0, avg * 16.0 / i16::MAX as f32).into_color();
                     input_colors[i] = c.into_format();
                 } else {
                     self.dropped_packets += 1;
@@ -477,7 +479,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                     local_state.held_output = Some(HeldOutputJack {
                         uuid: self.uuid.clone(),
                         id: i as u32,
-                        color: 30,
+                        color: self.color,
                         addr: self.interface.jack_addr(i)?,
                     });
                 }
@@ -490,8 +492,9 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
 
     fn toggle_input_jack(&mut self, jack_id: usize, output: HeldOutputJack, time: i64) {
         // For now this is just a switch rather than a toggle
-        if let Err(e) = self.interface.jack_connect(jack_id, output.addr, time) {
-            info!("Jack connection error: {:?}", e);
+        match self.interface.jack_connect(jack_id, output.addr, time) {
+            Ok(_) => self.input_colors[jack_id] = output.color,
+            Err(e) => info!("Jack connection error: {:?}", e),
         }
     }
 }
