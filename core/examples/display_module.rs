@@ -1,8 +1,10 @@
 use apiary_core::{AudioPacket, Module};
 use cpal::Stream;
 use eframe::egui;
+use palette::Srgb;
+use rand::Rng;
 use std::{
-    sync::mpsc::{channel, Receiver, Sender, TryRecvError},
+    sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender, TryRecvError, TrySendError},
     thread,
     time::{Duration, Instant},
 };
@@ -11,35 +13,49 @@ use crate::common::{Jack, Knob, SelectedInterface};
 
 pub struct DisplayModule<const I: usize, const O: usize, const P: usize> {
     name: String,
+    color: u16,
     width: f32,
     open: bool,
     tx: Option<Sender<PatchUpdate>>,
+    rx: Option<Receiver<([Srgb<u8>; I], [Srgb<u8>; O])>>,
     s: Option<Stream>,
     params: Vec<Option<Param>>,
     inputs: Vec<String>,
     input_checks: [bool; I],
+    input_colors: [Srgb<u8>; I],
     outputs: Vec<String>,
     output_checks: [bool; O],
+    output_colors: [Srgb<u8>; O],
 }
 
 impl<const I: usize, const O: usize, const P: usize> DisplayModule<I, O, P> {
     pub fn new() -> Self {
+        let mut rng = rand::thread_rng();
         DisplayModule {
             name: "".into(),
             width: 5.0,
+            color: rng.gen_range(0..360),
             open: true,
             tx: None,
+            rx: None,
             s: None,
             params: (0..P).map(|_| None).collect(),
             inputs: (0..I).map(|i| format!("Input {}", i)).collect(),
             input_checks: [false; I],
+            input_colors: [Srgb::new(64, 254, 0); I],
             outputs: (0..O).map(|i| format!("Output {}", i)).collect(),
             output_checks: [false; O],
+            output_colors: [Srgb::new(64, 254, 0); O],
         }
     }
 
     pub fn name(mut self, s: &str) -> Self {
         self.name = s.into();
+        self
+    }
+
+    pub fn color(mut self, color: u16) -> Self {
+        self.color = color;
         self
     }
 
@@ -97,7 +113,9 @@ impl<const I: usize, const O: usize, const P: usize> DisplayModule<I, O, P> {
         T: Processor<I, O, P> + Send + 'static,
     {
         let (ui_tx, ui_rx): (Sender<PatchUpdate>, Receiver<PatchUpdate>) = channel();
+        let (color_tx, color_rx) = sync_channel(1);
         self.tx = Some(ui_tx);
+        self.rx = Some(color_rx);
         let name = self.name.clone();
         let mut params = [0.0; P];
         for i in 0..P {
@@ -105,7 +123,7 @@ impl<const I: usize, const O: usize, const P: usize> DisplayModule<I, O, P> {
                 params[i] = v.val;
             }
         }
-        thread::spawn(move || process(ui_rx, &name, params, p));
+        thread::spawn(move || process(ui_rx, color_tx, &name, self.color, params, p));
         self
     }
 }
@@ -121,7 +139,9 @@ struct Param {
 
 fn process<const I: usize, const O: usize, const P: usize, T: Processor<I, O, P>>(
     rx: Receiver<PatchUpdate>,
+    tx: SyncSender<([Srgb<u8>; I], [Srgb<u8>; O])>,
     name: &str,
+    color: u16,
     mut params: [f32; P],
     mut p: T,
 ) {
@@ -132,6 +152,7 @@ fn process<const I: usize, const O: usize, const P: usize, T: Processor<I, O, P>
         SelectedInterface::new().unwrap(),
         rand::thread_rng(),
         name.into(),
+        color,
         time,
     );
 
@@ -154,11 +175,14 @@ fn process<const I: usize, const O: usize, const P: usize, T: Processor<I, O, P>
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => break 'outer,
             }
-            module
+            let res = module
                 .poll(time, |input, output| {
                     p.process(input, output, &params);
                 })
                 .unwrap();
+            if let Err(TrySendError::Disconnected(_)) = tx.try_send(res) {
+                break 'outer;
+            }
             time += 1;
         }
         thread::sleep(Duration::from_millis(0));
@@ -175,13 +199,27 @@ impl<const I: usize, const O: usize, const P: usize> DisplayHandler for DisplayM
     }
 
     fn update(&mut self, ui: &mut egui::Ui) {
+        if let Some(rx) = &self.rx {
+            match rx.try_recv() {
+                Ok(res) => {
+                    self.input_colors = res.0;
+                    self.output_colors = res.1;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => self.open = false,
+            }
+        }
         if let Some(tx) = &self.tx {
             ui.heading(self.name.clone());
             ui.add_space(20.0);
             // Add ui and message transmission
             for i in 0..I {
                 if ui
-                    .add(Jack::new(&mut self.input_checks[i], self.inputs[i].clone()))
+                    .add(Jack::new(
+                        &mut self.input_checks[i],
+                        self.inputs[i].clone(),
+                        self.input_colors[i],
+                    ))
                     .changed()
                 {
                     self.open &= tx.send(PatchUpdate::Input(i, self.input_checks[i])).is_ok();
@@ -207,6 +245,7 @@ impl<const I: usize, const O: usize, const P: usize> DisplayHandler for DisplayM
                     .add(Jack::new(
                         &mut self.output_checks[i],
                         self.outputs[i].clone(),
+                        self.output_colors[i],
                     ))
                     .changed()
                 {

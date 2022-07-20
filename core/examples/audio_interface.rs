@@ -1,4 +1,4 @@
-use apiary_core::{AudioFrame, AudioPacket, softclip};
+use apiary_core::{softclip, AudioFrame, AudioPacket};
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     Device, Sample, SampleFormat, Stream, StreamConfig,

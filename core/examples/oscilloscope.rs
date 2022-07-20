@@ -36,6 +36,7 @@ impl Oscilloscope {
                 SelectedInterface::new().unwrap(),
                 rand::thread_rng(),
                 "Oscilloscope".into(),
+                Default::default(),
                 0,
             );
             let start = Instant::now();
@@ -110,7 +111,11 @@ impl DisplayHandler for Oscilloscope {
             });
 
         if ui
-            .add(Jack::new(&mut self.input_checked, "Input"))
+            .add(Jack::new(
+                &mut self.input_checked,
+                "Input",
+                Default::default(),
+            ))
             .changed()
         {
             self.tx.send(self.input_checked).unwrap();

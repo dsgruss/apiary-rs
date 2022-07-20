@@ -34,6 +34,7 @@ extern crate lazy_static;
 
 use heapless::String;
 use leader_election::LeaderElection;
+use palette::{Hsv, IntoColor, Srgb};
 use rand_core::RngCore;
 use serde::{Deserialize, Serialize};
 use zerocopy::{AsBytes, FromBytes};
@@ -96,6 +97,16 @@ pub struct AudioPacket {
     pub data: [AudioFrame; BLOCK_SIZE],
 }
 
+impl AudioPacket {
+    pub fn avg(&self) -> f32 {
+        self.data
+            .iter()
+            .map(|x| x.data.iter().map(|y| *y as f32).sum::<f32>())
+            .sum::<f32>()
+            / (BLOCK_SIZE as f32 * CHANNELS as f32)
+    }
+}
+
 impl Default for AudioPacket {
     fn default() -> Self {
         AudioPacket {
@@ -104,7 +115,7 @@ impl Default for AudioPacket {
     }
 }
 
-#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Serialize, Deserialize, Copy, Clone, Debug)]
 pub enum PatchState {
     Idle,
     PatchEnabled,
@@ -122,7 +133,7 @@ struct HeldInputJack {
 struct HeldOutputJack {
     uuid: Uuid,
     id: JackId,
-    color: u32,
+    color: u16,
     addr: [u8; 4],
     // port: u16,
 }
@@ -261,6 +272,7 @@ pub trait Network<const I: usize, const O: usize> {
 /// updates.
 pub struct Module<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> {
     uuid: Uuid,
+    color: u16,
     interface: T,
     leader_election: LeaderElection<R>,
     input_patch_enabled: u16,
@@ -268,13 +280,15 @@ pub struct Module<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> 
     input_buffer: [AudioPacket; I],
     output_buffer: [AudioPacket; O],
     dropped_packets: u32,
+    patch_state: PatchState,
 }
 
 impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> {
-    pub fn new(interface: T, rand_source: R, id: Uuid, time: i64) -> Self {
+    pub fn new(interface: T, rand_source: R, id: Uuid, color: u16, time: i64) -> Self {
         let leader_election = LeaderElection::new(id.clone(), time, rand_source);
         Module {
             uuid: id,
+            color,
             interface,
             leader_election,
             input_patch_enabled: 0,
@@ -282,18 +296,22 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             input_buffer: [Default::default(); I],
             output_buffer: [Default::default(); O],
             dropped_packets: 0,
+            patch_state: PatchState::Idle,
         }
     }
 
-    pub fn poll<F>(&mut self, time: i64, f: F) -> Result<(), Error>
+    pub fn poll<F>(&mut self, time: i64, f: F) -> Result<([Srgb<u8>; I], [Srgb<u8>; O]), Error>
     where
         F: FnOnce(&[AudioPacket; I], &mut [AudioPacket; O]),
     {
+        let mut input_colors: [Srgb<u8>; I] = [Default::default(); I];
+        let mut output_colors: [Srgb<u8>; O] = [Default::default(); O];
         self.interface.poll(time)?;
         if self.can_send() {
             while let Ok(d) = self.recv_directive() {
                 match d {
                     Directive::GlobalStateUpdate(gsu) => {
+                        self.patch_state = gsu.patch_state;
                         if let Some(input) = gsu.input {
                             if input.uuid == self.uuid
                                 && gsu.patch_state == PatchState::PatchToggled
@@ -317,6 +335,10 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             for i in 0..I {
                 if let Ok(a) = self.jack_recv(i) {
                     self.input_buffer[i] = a;
+                    let avg = self.input_buffer[i].avg();
+                    let c: Srgb =
+                        Hsv::new(self.color as f32, 1.0, avg * 16.0 / i16::MAX as f32).into_color();
+                    input_colors[i] = c.into_format();
                 } else {
                     self.dropped_packets += 1;
                 }
@@ -325,6 +347,10 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             for i in 0..O {
                 let buf = self.output_buffer[i];
                 self.jack_send(i, &buf).unwrap();
+                let avg = self.output_buffer[i].avg();
+                let c: Srgb =
+                    Hsv::new(self.color as f32, 1.0, avg * 16.0 / i16::MAX as f32).into_color();
+                output_colors[i] = c.into_format();
             }
         } else {
             self.leader_election.reset(time);
@@ -334,7 +360,17 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             info!("{} dropped packets: {:?}", self.uuid, self.dropped_packets);
             self.dropped_packets = 0;
         }
-        Ok(())
+
+        let color: Srgb<u8> = match self.patch_state {
+            PatchState::Idle => Default::default(),
+            PatchState::PatchEnabled => Srgb::new(255, 255, 255),
+            PatchState::PatchToggled => Srgb::new(255, 255, 0),
+            PatchState::Blocked => Srgb::new(255, 0, 0),
+        };
+        match self.patch_state {
+            PatchState::Idle => Ok((input_colors, output_colors)),
+            _ => Ok(([color; I], [color; O])),
+        }
     }
 
     pub fn can_send(&mut self) -> bool {

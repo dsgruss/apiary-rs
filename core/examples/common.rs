@@ -1,4 +1,5 @@
-use eframe::egui;
+use eframe::{egui, epaint::Color32};
+use palette::Srgb;
 use std::f32::consts::PI;
 
 #[cfg(feature = "network-local")]
@@ -14,13 +15,15 @@ pub type SelectedInterface<const I: usize, const O: usize> = NativeInterface<I, 
 pub struct Jack<'a> {
     on: &'a mut bool,
     text: egui::WidgetText,
+    color: Srgb<u8>,
 }
 
 impl<'a> Jack<'a> {
-    pub fn new(on: &'a mut bool, text: impl Into<egui::WidgetText>) -> Self {
+    pub fn new(on: &'a mut bool, text: impl Into<egui::WidgetText>, color: Srgb<u8>) -> Self {
         Jack {
             on,
             text: text.into(),
+            color,
         }
     }
 }
@@ -51,7 +54,7 @@ impl<'a> egui::Widget for Jack<'a> {
                 ui.painter().circle(
                     rect.center(),
                     0.75 * radius,
-                    visuals.bg_fill,
+                    Color32::from_rgb(self.color.red, self.color.green, self.color.blue),
                     visuals.fg_stroke,
                 );
             }

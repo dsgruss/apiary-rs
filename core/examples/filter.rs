@@ -1,4 +1,4 @@
-use apiary_core::{voct_to_freq_scale, AudioPacket, BLOCK_SIZE, CHANNELS, SAMPLE_RATE, softclip};
+use apiary_core::{softclip, voct_to_freq_scale, AudioPacket, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
 use rand::Rng;
 use std::f32::consts::PI;
 
