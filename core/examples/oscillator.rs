@@ -8,7 +8,8 @@ pub struct Oscillator {
     time: i64,
 }
 
-const NUM_PARAMS: usize = 0;
+const RANGE_PARAM: usize = 0;
+const NUM_PARAMS: usize = 1;
 
 const IN_INPUT: usize = 0;
 const NUM_INPUTS: usize = 1;
@@ -19,13 +20,12 @@ const SAW_OUTPUT: usize = 2;
 const SQR_OUTPUT: usize = 3;
 const NUM_OUTPUTS: usize = 4;
 
-// const WT: usize = 2048;  // Wavetable size in samples
-
 impl Oscillator {
-    pub fn init() -> DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> {
+    pub fn init(name: &str) -> DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> {
         DisplayModule::new()
-            .name("Oscillator")
+            .name(name)
             .input(IN_INPUT, "Input")
+            .param(RANGE_PARAM, -12.0, 12.0, 0.0, "Range", " semitones", false)
             .output(SIN_OUTPUT, "Sin")
             .output(TRI_OUTPUT, "Tri")
             .output(SAW_OUTPUT, "Saw")
@@ -42,7 +42,7 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Oscillator {
         &mut self,
         input: &[AudioPacket; NUM_INPUTS],
         output: &mut [AudioPacket; NUM_OUTPUTS],
-        _params: &[f32; NUM_PARAMS],
+        params: &[f32; NUM_PARAMS],
     ) {
         for i in 0..BLOCK_SIZE {
             for j in 0..CHANNELS {
@@ -58,7 +58,9 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Oscillator {
                 output[SAW_OUTPUT].data[i].data[j] = (-a + 2.0 * a * self.phase[j]).round() as i16;
                 output[SQR_OUTPUT].data[i].data[j] =
                     if self.phase[j] < 0.5 { a } else { -a }.round() as i16;
-                self.phase[j] += voct_to_frequency(input[IN_INPUT].data[i].data[j]) / SAMPLE_RATE;
+                self.phase[j] += voct_to_frequency(
+                    input[IN_INPUT].data[i].data[j] as f32 + params[RANGE_PARAM] * 512.0,
+                ) / SAMPLE_RATE;
                 while self.phase[j] > 1.0 {
                     self.phase[j] -= 1.0;
                 }

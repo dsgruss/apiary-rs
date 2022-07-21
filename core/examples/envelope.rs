@@ -34,9 +34,9 @@ enum Stage {
 }
 
 impl Envelope {
-    pub fn init() -> DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> {
+    pub fn init(name: &str) -> DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> {
         DisplayModule::new()
-            .name("Envelope")
+            .name(name)
             .input(GATE_INPUT, "Gate")
             .param(DELAY_PARAM, 0.001, 4.0, 0.0, "Delay", " s", true)
             .param(ATTACK_PARAM, 0.001, 20.0, 0.5, "Attack", " s", true)

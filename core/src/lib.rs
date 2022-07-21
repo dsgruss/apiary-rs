@@ -55,8 +55,8 @@ pub fn midi_note_to_voct(note: u8) -> i16 {
     (note as i16 - 64) * 512
 }
 
-pub fn voct_to_frequency(v_oct: i16) -> f32 {
-    440.0 * voct_to_freq_scale(v_oct as f32 - 5.0)
+pub fn voct_to_frequency(v_oct: f32) -> f32 {
+    440.0 * voct_to_freq_scale(v_oct as f32 - 5.0 * 512.0)
 }
 
 #[cfg(feature = "std")]
@@ -339,8 +339,12 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                 if let Ok(a) = self.jack_recv(i) {
                     self.input_buffer[i] = a;
                     let avg = self.input_buffer[i].avg();
-                    let c: Srgb =
-                        Hsv::new(self.input_colors[i] as f32, 1.0, avg * 16.0 / i16::MAX as f32).into_color();
+                    let c: Srgb = Hsv::new(
+                        self.input_colors[i] as f32,
+                        1.0,
+                        avg * 16.0 / i16::MAX as f32,
+                    )
+                    .into_color();
                     input_colors[i] = c.into_format();
                 } else {
                     self.dropped_packets += 1;
@@ -493,15 +497,13 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
 
     fn process_gsu(&mut self, gsu: DirectiveGlobalStateUpdate, time: i64) {
         self.patch_state = gsu.patch_state;
-                        if let Some(input) = gsu.input {
-                            if input.uuid == self.uuid
-                                && gsu.patch_state == PatchState::PatchToggled
-                            {
-                                if let Some(output) = gsu.output {
-                                    self.toggle_input_jack(input.id as usize, output, time);
-                                }
-                            }
-                        }
+        if let Some(input) = gsu.input {
+            if input.uuid == self.uuid && gsu.patch_state == PatchState::PatchToggled {
+                if let Some(output) = gsu.output {
+                    self.toggle_input_jack(input.id as usize, output, time);
+                }
+            }
+        }
     }
 
     fn toggle_input_jack(&mut self, jack_id: usize, output: HeldOutputJack, time: i64) {

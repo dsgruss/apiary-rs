@@ -123,13 +123,17 @@ impl eframe::App for Manager {
                         self.window_count += 1;
                     }
                     if ui.button("Oscillator").clicked() {
-                        self.windows
-                            .push((self.window_count, Box::new(Oscillator::init())));
+                        self.windows.push((
+                            self.window_count,
+                            Box::new(Oscillator::init(&format!("OSC:{}", self.window_count))),
+                        ));
                         self.window_count += 1;
                     }
                     if ui.button("Envelope").clicked() {
-                        self.windows
-                            .push((self.window_count, Box::new(Envelope::init())));
+                        self.windows.push((
+                            self.window_count,
+                            Box::new(Envelope::init(&format!("OSC:{}", self.window_count))),
+                        ));
                         self.window_count += 1;
                     }
                     if ui.button("Mixer").clicked() {
