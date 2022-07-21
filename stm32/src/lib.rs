@@ -76,6 +76,10 @@ pub struct Ui {
     sw_light4: Led<'C', 9>,
 }
 
+// TIM2 CH1 : PA15 Red
+// TIM2 CH2 : PB3 Blue
+// TIM3 CH1 : PB4 Green
+
 impl Ui {
     pub fn new(pins: UiPins) -> Ui {
         Ui {

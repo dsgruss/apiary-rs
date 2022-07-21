@@ -135,6 +135,51 @@ fn main() -> ! {
     let uuid = Uuid::from("hardware");
     let rand_source = p.RNG.constrain(&clocks);
 
+    // TIM2 CH1 : PA15 Red
+    // TIM2 CH2 : PB3 Blue
+    // TIM3 CH1 : PB4 Green
+
+    // TIM4 CH4 : PB9 Red
+    // TIM8 CH1 : PC6 Blue
+    // TIM3 CH2 : PC7 Green
+
+    let (mut output_red, mut output_blue) = p
+        .TIM2
+        .pwm_hz(
+            (gpioa.pa15.into_alternate(), gpiob.pb3.into_alternate()),
+            1.kHz(),
+            &clocks,
+        )
+        .split();
+    let (mut output_green, mut input_green) = p
+        .TIM3
+        .pwm_hz(
+            (gpiob.pb4.into_alternate(), gpioc.pc7.into_alternate()),
+            1.kHz(),
+            &clocks,
+        )
+        .split();
+    let mut input_red = p
+        .TIM4
+        .pwm_hz(gpiob.pb9.into_alternate(), 1.kHz(), &clocks)
+        .split();
+    let mut input_blue = p
+        .TIM8
+        .pwm_hz(gpioc.pc6.into_alternate(), 1.kHz(), &clocks)
+        .split();
+    output_red.set_duty(output_red.get_max_duty());
+    output_green.set_duty(output_green.get_max_duty() * 0);
+    output_blue.set_duty(output_blue.get_max_duty() * 0);
+    output_red.enable();
+    output_blue.enable();
+    output_green.enable();
+    input_red.set_duty(input_red.get_max_duty());
+    input_green.set_duty(input_green.get_max_duty() * 0);
+    input_blue.set_duty(input_blue.get_max_duty() * 0);
+    input_red.enable();
+    input_blue.enable();
+    input_green.enable();
+
     let ui_pins = UiPins {
         sw_sig2: gpiod.pd12,
         sw_sig4: gpioc.pc8,
@@ -177,6 +222,7 @@ fn main() -> ! {
         SmoltcpInterface::<_, 1, 1, 3>::new(&mut eth_dma, &mut storage),
         rand_source,
         uuid.clone(),
+        220,
         0,
     );
 
@@ -229,10 +275,36 @@ fn main() -> ! {
         );
 
         let poll_start = cycle_timer.now();
-        if let Err(e) = module.poll(time, |input, output| {
+        match module.poll(time, |input, output| {
             output[0] = input[0];
         }) {
-            info!("Data send error: {:?}", e);
+            Ok((input_color, output_color)) => {
+                input_red.set_duty(
+                    (input_red.get_max_duty() as u32 * (255 - input_color[0].red as u32) / 256)
+                        as u16,
+                );
+                input_green.set_duty(
+                    (input_green.get_max_duty() as u32 * (255 - input_color[0].green as u32) / 256)
+                        as u16,
+                );
+                input_blue.set_duty(
+                    (input_blue.get_max_duty() as u32 * (255 - input_color[0].blue as u32) / 256)
+                        as u16,
+                );
+                output_red.set_duty(
+                    (output_red.get_max_duty() as u32 * (255 - output_color[0].red as u32) / 256)
+                        as u16,
+                );
+                output_green.set_duty(
+                    (output_green.get_max_duty() as u32 * (255 - output_color[0].green as u32) / 256)
+                        as u16,
+                );
+                output_blue.set_duty(
+                    (output_blue.get_max_duty() as u32 * (255 - output_color[0].blue as u32) / 256)
+                        as u16,
+                );
+            }
+            Err(e) => info!("Data send error: {:?}", e),
         }
         update_time(
             (cycle_timer.now() - poll_start).to_micros() as i64,

@@ -17,6 +17,7 @@ stm32f4xx-hal = { version = "0.13", features = ["stm32f429"] }
 
 fugit = "0.3"
 log = { version = "0.4.6", features = ["release_max_level_info"] }
+palette = { version = "0.6.1", default-features = false, features = ["libm"] }
 
 heapless = { version = "0.7.0", features = ["serde"] }
 
