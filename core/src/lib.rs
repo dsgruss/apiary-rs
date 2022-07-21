@@ -310,29 +310,30 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         let mut output_colors: [Srgb<u8>; O] = [Default::default(); O];
         self.interface.poll(time)?;
         if self.can_send() {
-            while let Ok(d) = self.recv_directive() {
+            if let Ok(d) = self.recv_directive() {
                 match d {
                     Directive::GlobalStateUpdate(gsu) => {
-                        self.patch_state = gsu.patch_state;
-                        if let Some(input) = gsu.input {
-                            if input.uuid == self.uuid
-                                && gsu.patch_state == PatchState::PatchToggled
-                            {
-                                if let Some(output) = gsu.output {
-                                    self.toggle_input_jack(input.id as usize, output, time);
-                                }
-                            }
-                        }
+                        self.process_gsu(gsu, time);
                     }
                     d => {
                         if let Some(resp) = self.leader_election.poll(Some(d), time) {
                             self.send_directive(&resp)?;
+                            if let Directive::GlobalStateUpdate(gsu) = resp {
+                                // Some network interfaces don't send multicast messages back to the
+                                // client, so we process again in case we are the leader.
+                                self.process_gsu(gsu, time);
+                            }
                         }
                     }
                 }
             }
             if let Some(resp) = self.leader_election.poll(None, time) {
                 self.send_directive(&resp)?;
+                if let Directive::GlobalStateUpdate(gsu) = resp {
+                    // Some network interfaces don't send multicast messages back to the
+                    // client, so we process again in case we are the leader.
+                    self.process_gsu(gsu, time);
+                }
             }
             for i in 0..I {
                 if let Ok(a) = self.jack_recv(i) {
@@ -488,6 +489,19 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         }
         self.leader_election.update_local_state(local_state);
         Ok(())
+    }
+
+    fn process_gsu(&mut self, gsu: DirectiveGlobalStateUpdate, time: i64) {
+        self.patch_state = gsu.patch_state;
+                        if let Some(input) = gsu.input {
+                            if input.uuid == self.uuid
+                                && gsu.patch_state == PatchState::PatchToggled
+                            {
+                                if let Some(output) = gsu.output {
+                                    self.toggle_input_jack(input.id as usize, output, time);
+                                }
+                            }
+                        }
     }
 
     fn toggle_input_jack(&mut self, jack_id: usize, output: HeldOutputJack, time: i64) {
