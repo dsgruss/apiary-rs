@@ -132,7 +132,7 @@ impl eframe::App for Manager {
                     if ui.button("Envelope").clicked() {
                         self.windows.push((
                             self.window_count,
-                            Box::new(Envelope::init(&format!("OSC:{}", self.window_count))),
+                            Box::new(Envelope::init(&format!("ENV:{}", self.window_count))),
                         ));
                         self.window_count += 1;
                     }
