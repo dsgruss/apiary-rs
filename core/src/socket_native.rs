@@ -5,6 +5,7 @@ This module provides communication (via the `Network` trait) using the native so
 
 use core::mem::MaybeUninit;
 use core::str::FromStr;
+use std::io;
 use ipnet::Ipv4Net;
 use local_ip_address::list_afinet_netifas;
 use rand::{thread_rng, Rng};
@@ -131,6 +132,7 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
     fn send_directive(&mut self, buf: &[u8]) -> Result<(), Error> {
         match self.patch_socket.send_to(buf, &self.patch_ep.into()) {
             Ok(_) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => Ok(()),
             Err(_) => Err(Error::Network),
         }
     }
@@ -173,7 +175,11 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
             .send_to(buf, &self.output_eps[jack_id].into())
         {
             Ok(_) => Ok(()),
-            Err(_) => Err(Error::Network),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => Ok(()),
+            Err(e) => {
+                info!("Jack send error: {:?}", e);
+                Err(Error::Network)
+            }
         }
     }
 
