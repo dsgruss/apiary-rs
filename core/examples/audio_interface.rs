@@ -73,10 +73,25 @@ const NUM_OUTPUTS: usize = 0;
 impl AudioInterface {
     pub fn init() -> Result<DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS>, Box<dyn Error>> {
         let host = cpal::default_host();
-        let device = host.default_output_device().ok_or(io::Error::new(
-            ErrorKind::NotFound,
-            "No default host device found",
-        ))?;
+        let mut found_device = None;
+        for d in host.output_devices()? {
+            info!("{:?}", d.name()?);
+        }
+        for d in host.output_devices()? {
+            if d.name()?.contains("CABLE") {
+                found_device = Some(d);
+                break;
+            }
+        }
+        let device = match found_device {
+            Some(d) => d,
+            None => {
+                host.default_output_device().ok_or(io::Error::new(
+                    ErrorKind::NotFound,
+                    "No default host device found",
+                ))?
+            }
+        };
         let mut configs = device.supported_output_configs()?;
         let supported_config = configs
             .next()
@@ -85,7 +100,7 @@ impl AudioInterface {
                 "No supported configs found",
             ))?
             .with_max_sample_rate();
-        info!("{:?}: {:?}", device.name()?, supported_config);
+        info!("Selecting device: {:?}: {:?}", device.name()?, supported_config);
 
         let sample_format = supported_config.sample_format();
         let config = supported_config.into();
@@ -94,7 +109,7 @@ impl AudioInterface {
         // expected 48,000 Hz (Dropping 48 frames or 1 ms every ten seconds on average), so we
         // increase the buffer size here to compensate.
         let (audio_tx, audio_rx): (SyncSender<AudioFrame>, Receiver<AudioFrame>) =
-            sync_channel(20000);
+            sync_channel(960);
 
         let audio_stream = match sample_format {
             SampleFormat::F32 => run::<f32>(&device, &config, audio_rx),
