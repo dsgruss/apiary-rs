@@ -85,12 +85,10 @@ impl AudioInterface {
         }
         let device = match found_device {
             Some(d) => d,
-            None => {
-                host.default_output_device().ok_or(io::Error::new(
-                    ErrorKind::NotFound,
-                    "No default host device found",
-                ))?
-            }
+            None => host.default_output_device().ok_or(io::Error::new(
+                ErrorKind::NotFound,
+                "No default host device found",
+            ))?,
         };
         let mut configs = device.supported_output_configs()?;
         let supported_config = configs
@@ -100,7 +98,11 @@ impl AudioInterface {
                 "No supported configs found",
             ))?
             .with_max_sample_rate();
-        info!("Selecting device: {:?}: {:?}", device.name()?, supported_config);
+        info!(
+            "Selecting device: {:?}: {:?}",
+            device.name()?,
+            supported_config
+        );
 
         let sample_format = supported_config.sample_format();
         let config = supported_config.into();

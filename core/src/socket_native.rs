@@ -5,11 +5,11 @@ This module provides communication (via the `Network` trait) using the native so
 
 use core::mem::MaybeUninit;
 use core::str::FromStr;
-use std::io;
 use ipnet::Ipv4Net;
 use local_ip_address::list_afinet_netifas;
 use rand::{thread_rng, Rng};
 use socket2::{Domain, Protocol, Socket, Type};
+use std::io;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
