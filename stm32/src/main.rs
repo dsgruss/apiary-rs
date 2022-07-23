@@ -9,7 +9,7 @@ use cortex_m::interrupt::Mutex;
 use cortex_m_rt::entry;
 use stm32f4xx_hal::{
     adc::{
-        config::{AdcConfig, Clock, Continuous, SampleTime, Scan},
+        config::{AdcConfig, Clock, Continuous, Dma, SampleTime, Scan, Sequence},
         Adc,
     },
     dma::{config, traits::StreamISR, MemoryToPeripheral, Stream3, StreamsTuple, Transfer},
@@ -97,6 +97,7 @@ fn main() -> ! {
     let gpiob = p.GPIOB.split();
     let gpioc = p.GPIOC.split();
     let gpiod = p.GPIOD.split();
+    let gpiof = p.GPIOF.split();
     let gpiog = p.GPIOG.split();
 
     let tx_pin = gpiod.pd8;
@@ -228,16 +229,59 @@ fn main() -> ! {
 
     info!("Sockets created");
 
+    // ADC3 GPIO Configuration
+    // PF3     ------> ADC3_IN9
+    // PF4     ------> ADC3_IN14
+    // PF5     ------> ADC3_IN15
+    // PF7     ------> ADC3_IN5
+    // PF8     ------> ADC3_IN6
+    // PF9     ------> ADC3_IN7
+    // PF10     ------> ADC3_IN8
+    // PA0/WKUP     ------> ADC3_IN0
+
     let adc_config = AdcConfig::default()
+        .dma(Dma::Continuous)
         .clock(Clock::Pclk2_div_8)
         .scan(Scan::Enabled)
         .continuous(Continuous::Single);
+    let adc_dma_config = config::DmaConfig::default()
+        .double_buffer(false)
+        .memory_increment(true);
 
     let mut adc = Adc::adc3(p.ADC3, true, adc_config);
-    let pa0 = gpioa.pa0.into_analog();
-    let mut sample = adc.convert(&pa0, SampleTime::Cycles_480);
-    let millivolts = adc.sample_to_millivolts(sample);
-    info!("ADC current sample: {:?}", millivolts);
+    adc.configure_channel(
+        &gpioa.pa0.into_analog(),
+        Sequence::One,
+        SampleTime::Cycles_480,
+    );
+    adc.configure_channel(
+        &gpiof.pf7.into_analog(),
+        Sequence::Two,
+        SampleTime::Cycles_480,
+    );
+    adc.configure_channel(
+        &gpiof.pf8.into_analog(),
+        Sequence::Three,
+        SampleTime::Cycles_480,
+    );
+    adc.configure_channel(
+        &gpiof.pf9.into_analog(),
+        Sequence::Four,
+        SampleTime::Cycles_480,
+    );
+    let init_adc_buffer = cortex_m::singleton!(: [u16; 4] = [0; 4]).unwrap();
+    let mut adc_transfer = Transfer::init_peripheral_to_memory(
+        StreamsTuple::new(p.DMA2).0,
+        adc,
+        init_adc_buffer,
+        None,
+        adc_dma_config,
+    );
+    adc_transfer.start(|adc| adc.start_conversion());
+    let mut adc_buffer = cortex_m::singleton!(: [u16; 4] = [0; 4]).unwrap();
+    adc_buffer = adc_transfer.next_transfer(adc_buffer).unwrap().0;
+    // let millivolts = adc.sample_to_millivolts(sample);
+    info!("ADC current sample: {:?}", adc_buffer);
 
     info!("Starting main loop");
 
@@ -296,8 +340,8 @@ fn main() -> ! {
                         as u16,
                 );
                 output_green.set_duty(
-                    (output_green.get_max_duty() as u32 * (255 - output_color[0].green as u32) / 256)
-                        as u16,
+                    (output_green.get_max_duty() as u32 * (255 - output_color[0].green as u32)
+                        / 256) as u16,
                 );
                 output_blue.set_duty(
                     (output_blue.get_max_duty() as u32 * (255 - output_color[0].blue as u32) / 256)
@@ -312,7 +356,8 @@ fn main() -> ! {
         );
 
         let adc_start = cycle_timer.now();
-        sample = adc.convert(&pa0, SampleTime::Cycles_84);
+        adc_transfer.start(|adc| adc.start_conversion());
+        adc_buffer = adc_transfer.next_transfer(adc_buffer).unwrap().0;
         for frame in &mut packet.data {
             for v in &mut frame.data {
                 *v = 0 as i16;
@@ -324,7 +369,7 @@ fn main() -> ! {
         );
         if time % 1000 == 0 {
             info!("total, max (us): {:?}", last_stats);
-            info!("ADC current sample: {:?}", adc.sample_to_millivolts(sample));
+            info!("ADC current sample: {:?}", adc_buffer);
             /*
             info!(
                 "Election status: {:?}:{}:{}, leader is {:?}",
