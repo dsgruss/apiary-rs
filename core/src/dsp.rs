@@ -155,7 +155,7 @@ pub struct Svf {
 
 impl Svf {
     pub fn set_params(&mut self, cutoff: f32, resonance: f32) {
-        self.g = tanf(cutoff / SAMPLE_RATE);
+        self.g = tanf(PI * cutoff / SAMPLE_RATE);
         self.r = 1.0 / (resonance + 1.0);
         self.h = 1.0 / (1.0 + self.r * self.g + self.g * self.g);
     }
