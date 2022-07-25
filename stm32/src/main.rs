@@ -290,8 +290,8 @@ fn main() -> ! {
     let mut timer = cp.SYST.counter_us(&clocks);
     let mut time: i64 = 0;
     let mut cycle_time: i64 = 0;
-    let mut last_stats: Times = Default::default();
-    let mut curr_stats: Times = Default::default();
+    let mut last_stats: Stats = Default::default();
+    let mut curr_stats: Stats = Default::default();
     timer.start(1.millis()).unwrap();
     cycle_timer.start(100.millis()).unwrap();
 
@@ -304,23 +304,23 @@ fn main() -> ! {
             cycle_time += 1
         }
         cycle_timer.start(100.millis()).unwrap();
+        curr_stats.total.tic(cycle_timer.now());
         let start = cycle_timer.now();
         time += 1;
 
-        let ui_start = cycle_timer.now();
+        curr_stats.ui.tic(cycle_timer.now());
         let (changed, sw2, sw4) = ui.poll();
         if changed {
             module.set_input_patch_enabled(0, sw2).unwrap();
             module.set_output_patch_enabled(0, sw4).unwrap();
         }
-        update_time(
-            (cycle_timer.now() - ui_start).to_micros() as i64,
-            &mut curr_stats.ui,
-        );
+        curr_stats.ui.toc(cycle_timer.now());
 
-        let poll_start = cycle_timer.now();
+        curr_stats.poll.tic(cycle_timer.now());
         match module.poll(time, |input, output| {
+            curr_stats.process.tic(cycle_timer.now());
             output[0] = input[0];
+            curr_stats.process.toc(cycle_timer.now());
         }) {
             Ok((input_color, output_color)) => {
                 input_red.set_duty(
@@ -350,12 +350,9 @@ fn main() -> ! {
             }
             Err(e) => info!("Data send error: {:?}", e),
         }
-        update_time(
-            (cycle_timer.now() - poll_start).to_micros() as i64,
-            &mut curr_stats.poll,
-        );
+        curr_stats.poll.toc(cycle_timer.now());
 
-        let adc_start = cycle_timer.now();
+        curr_stats.adc.tic(cycle_timer.now());
         adc_transfer.start(|adc| adc.start_conversion());
         adc_buffer = adc_transfer.next_transfer(adc_buffer).unwrap().0;
         for frame in &mut packet.data {
@@ -363,10 +360,8 @@ fn main() -> ! {
                 *v = 0 as i16;
             }
         }
-        update_time(
-            (cycle_timer.now() - adc_start).to_micros() as i64,
-            &mut curr_stats.adc,
-        );
+        curr_stats.adc.toc(cycle_timer.now());
+
         if time % 1000 == 0 {
             info!("total, max (us): {:?}", last_stats);
             info!("ADC current sample: {:?}", adc_buffer);
@@ -382,39 +377,52 @@ fn main() -> ! {
             last_stats = curr_stats;
             curr_stats = Default::default();
         }
-        update_time(
-            (cycle_timer.now() - start).to_micros() as i64,
-            &mut curr_stats.total,
-        );
+        curr_stats.total.toc(cycle_timer.now());
         cycle_time += (cycle_timer.now() - start).to_millis() as i64;
     }
 }
 
 #[derive(Default)]
-struct Times {
-    ui: (i64, i64),
-    send: (i64, i64),
-    poll: (i64, i64),
-    adc: (i64, i64),
-    total: (i64, i64),
+struct Stats {
+    ui: StatTimer,
+    process: StatTimer,
+    poll: StatTimer,
+    adc: StatTimer,
+    total: StatTimer,
 }
 
-impl Debug for Times {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Times")
-            .field("ui", &(self.ui.0 / 1000, self.ui.1))
-            .field("send", &(self.send.0 / 1000, self.send.1))
-            .field("poll", &(self.poll.0 / 1000, self.poll.1))
-            .field("adc", &(self.adc.0 / 1000, self.adc.1))
-            .field("total", &(self.total.0 / 1000, self.total.1))
-            .finish()
+#[derive(Default)]
+struct StatTimer {
+    begin: Option<fugit::Instant<u32, 1_u32, 1000000_u32>>,
+    total: i64,
+    max: i64,
+}
+
+impl StatTimer {
+    fn tic(&mut self, time: fugit::Instant<u32, 1_u32, 1000000_u32>) {
+        self.begin = Some(time);
+    }
+
+    fn toc(&mut self, time: fugit::Instant<u32, 1_u32, 1000000_u32>) {
+        if let Some(begin) = self.begin {
+            let diff = (time - begin).to_micros() as i64;
+            self.total += diff;
+            if diff > self.max {
+                self.max = diff;
+            }
+        }
     }
 }
 
-fn update_time(micros: i64, store: &mut (i64, i64)) {
-    store.0 += micros;
-    if micros > store.1 {
-        store.1 = micros;
+impl Debug for Stats {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Stats")
+            .field("ui", &(self.ui.total / 1000, self.ui.max))
+            .field("process", &(self.process.total / 1000, self.process.max))
+            .field("poll", &(self.poll.total / 1000, self.poll.max))
+            .field("adc", &(self.adc.total / 1000, self.adc.max))
+            .field("total", &(self.total.total / 1000, self.total.max))
+            .finish()
     }
 }
 
