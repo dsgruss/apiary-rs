@@ -91,6 +91,10 @@ impl DisplayHandler for Oscilloscope {
         self.width
     }
 
+    fn name(&self) -> &str {
+        "Oscilloscope"
+    }
+
     fn is_open(&self) -> bool {
         self.open
     }

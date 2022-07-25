@@ -20,9 +20,9 @@ const MIX_OUTPUT: usize = 0;
 const NUM_OUTPUTS: usize = 1;
 
 impl Mixer {
-    pub fn init() -> DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> {
+    pub fn init(name: &str) -> DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> {
         DisplayModule::new()
-            .name("Mixer")
+            .name(name)
             .input(IN0_INPUT, "Input 0")
             .input(LEVEL0_INPUT, "Level 0")
             .input(IN1_INPUT, "Input 1")

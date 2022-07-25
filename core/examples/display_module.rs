@@ -194,6 +194,10 @@ impl<const I: usize, const O: usize, const P: usize> DisplayHandler for DisplayM
         self.width
     }
 
+    fn name(&self) -> &str {
+        &self.name
+    }
+
     fn is_open(&self) -> bool {
         self.open
     }
@@ -260,6 +264,7 @@ impl<const I: usize, const O: usize, const P: usize> DisplayHandler for DisplayM
 
 pub trait DisplayHandler {
     fn width(&self) -> f32;
+    fn name(&self) -> &str;
     fn is_open(&self) -> bool;
     fn update(&mut self, ui: &mut egui::Ui);
 }

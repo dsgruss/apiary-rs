@@ -16,6 +16,7 @@ mod midi_to_cv;
 mod mixer;
 mod oscillator;
 mod oscilloscope;
+mod reverb;
 
 use audio_interface::AudioInterface;
 use common::SelectedInterface;
@@ -26,6 +27,39 @@ use midi_to_cv::MidiToCv;
 use mixer::Mixer;
 use oscillator::Oscillator;
 use oscilloscope::Oscilloscope;
+use reverb::Reverb;
+
+fn window_build(name: &str, num: u32) -> Result<Box<dyn DisplayHandler>, ()> {
+    let id = format!("{}:{}", name, num);
+    match name {
+        "Midi to CV" => Ok(Box::new(MidiToCv::init())),
+        "Oscillator" => Ok(Box::new(Oscillator::init(&id))),
+        "Envelope" => Ok(Box::new(Envelope::init(&id))),
+        "Mixer" => Ok(Box::new(Mixer::init(&id))),
+        "Filter" => Ok(Box::new(Filter::init())),
+        "Audio Interface" => match AudioInterface::init() {
+            Ok(a) => Ok(Box::new(a)),
+            Err(e) => {
+                info!("Failed to open AudioInterface: {:?}", e);
+                Err(())
+            }
+        },
+        "Reverb" => Ok(Box::new(Reverb::init(&id))),
+        "Oscilloscope" => Ok(Box::new(Oscilloscope::new())),
+        _ => Err(()),
+    }
+}
+
+const WINDOWS: [&str; 8] = [
+    "Midi to CV",
+    "Oscillator",
+    "Envelope",
+    "Mixer",
+    "Filter",
+    "Audio Interface",
+    "Reverb",
+    "Oscilloscope",
+];
 
 #[macro_use]
 extern crate log;
@@ -81,7 +115,7 @@ fn main() {
 struct Manager {
     status: String,
     tx: Sender<bool>,
-    windows: Vec<(u32, Box<dyn DisplayHandler>)>,
+    windows: Vec<Box<dyn DisplayHandler>>,
     window_count: u32,
 }
 
@@ -117,59 +151,27 @@ impl eframe::App for Manager {
                         // Send preset information
                     }
                     ui.add_space(20.0);
-                    if ui.button("Midi to CV").clicked() {
-                        self.windows
-                            .push((self.window_count, Box::new(MidiToCv::init())));
-                        self.window_count += 1;
-                    }
-                    if ui.button("Oscillator").clicked() {
-                        self.windows.push((
-                            self.window_count,
-                            Box::new(Oscillator::init(&format!("OSC:{}", self.window_count))),
-                        ));
-                        self.window_count += 1;
-                    }
-                    if ui.button("Envelope").clicked() {
-                        self.windows.push((
-                            self.window_count,
-                            Box::new(Envelope::init(&format!("ENV:{}", self.window_count))),
-                        ));
-                        self.window_count += 1;
-                    }
-                    if ui.button("Mixer").clicked() {
-                        self.windows
-                            .push((self.window_count, Box::new(Mixer::init())));
-                        self.window_count += 1;
-                    }
-                    if ui.button("Filter").clicked() {
-                        self.windows
-                            .push((self.window_count, Box::new(Filter::init())));
-                        self.window_count += 1;
-                    }
-                    if ui.button("Audio Interface").clicked() {
-                        match AudioInterface::init() {
-                            Ok(a) => {
-                                self.windows.push((self.window_count, Box::new(a)));
-                                self.window_count += 1;
+                    for w in WINDOWS {
+                        if ui.button(w).clicked() {
+                            match window_build(w, self.window_count) {
+                                Ok(a) => {
+                                    self.windows.push(a);
+                                    self.window_count += 1;
+                                }
+                                Err(_) => {}
                             }
-                            Err(e) => info!("Failed to open AudioInterface: {:?}", e),
                         }
-                    }
-                    if ui.button("Oscilloscope").clicked() {
-                        self.windows
-                            .push((self.window_count, Box::new(Oscilloscope::new())));
-                        self.window_count += 1;
                     }
                     ui.add_space(100.0);
                     ui.label(format!("{}", self.status));
                 },
             );
         });
-        self.windows.retain(|w| w.1.is_open());
+        self.windows.retain(|w| w.is_open());
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 for w in &mut self.windows {
-                    egui::Area::new(format!("id{:?}", w.0))
+                    egui::Area::new(w.name())
                         // egui::containers::Resize::default()
                         //    .fixed_size((15.0 * w.width(), 450.0))
                         .show(ctx, |ui| {
@@ -179,7 +181,7 @@ impl eframe::App for Manager {
                                     .stroke((1.0, egui::Color32::BLACK).into())
                                     .inner_margin(4.0)
                                     .show(ui, |mut ui| {
-                                        w.1.update(&mut ui);
+                                        w.update(&mut ui);
                                         // ui.allocate_space(ui.available_size());
                                     });
                             });

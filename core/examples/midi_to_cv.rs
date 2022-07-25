@@ -57,6 +57,7 @@ impl MidiToCv {
         let in_ports = midi_check.ports();
         let mut midi_connections = vec![];
         for (i, port) in in_ports.iter().enumerate() {
+            // if midi_check.port_name(port).unwrap().contains("loop") {
             info!("Opening {:?}", midi_check.port_name(port).unwrap());
             let midi_in = MidiInput::new(&format!("midir input {}", i)).unwrap();
             let port_tx = midi_tx.clone();
@@ -71,6 +72,7 @@ impl MidiToCv {
                 )
                 .unwrap();
             midi_connections.push(conn_in);
+            // }
         }
 
         DisplayModule::new()
