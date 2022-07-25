@@ -32,6 +32,8 @@ pub mod socket_local;
 #[macro_use]
 extern crate lazy_static;
 
+pub mod dsp;
+
 use heapless::String;
 use leader_election::LeaderElection;
 use palette::{Hsv, IntoColor, Srgb};
