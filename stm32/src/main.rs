@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+use itertools::izip;
+use libm::{log10f, powf};
 use panic_semihosting as _;
 // use panic_itm as _;
 // use panic_halt as _;
@@ -20,8 +22,8 @@ use stm32f4xx_hal::{
     serial::{config::DmaConfig, Config, Tx},
 };
 
-use core::cell::RefCell;
 use core::fmt::{Debug, Write};
+use core::{cell::RefCell, iter::zip};
 use fugit::RateExtU32;
 use heapless::spsc::Queue;
 
@@ -76,7 +78,7 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger {};
 
-use apiary_core::{socket_smoltcp::SmoltcpInterface, AudioPacket, Module, Uuid};
+use apiary_core::{dsp::Svf, socket_smoltcp::SmoltcpInterface, softclip, Module, Uuid, CHANNELS};
 
 use apiary::{Ui, UiPins};
 
@@ -280,12 +282,11 @@ fn main() -> ! {
     adc_transfer.start(|adc| adc.start_conversion());
     let mut adc_buffer = cortex_m::singleton!(: [u16; 4] = [0; 4]).unwrap();
     adc_buffer = adc_transfer.next_transfer(adc_buffer).unwrap().0;
-    // let millivolts = adc.sample_to_millivolts(sample);
+    let mut params: [f32; 3] = [0.0; 3];
+    let mut filters: [Svf; CHANNELS] = Default::default();
     info!("ADC current sample: {:?}", adc_buffer);
 
     info!("Starting main loop");
-
-    let mut packet: AudioPacket = Default::default();
 
     let mut timer = cp.SYST.counter_us(&clocks);
     let mut time: i64 = 0;
@@ -319,7 +320,16 @@ fn main() -> ! {
         curr_stats.poll.tic(cycle_timer.now());
         match module.poll(time, |input, output| {
             curr_stats.process.tic(cycle_timer.now());
-            output[0] = input[0];
+            for j in 0..CHANNELS {
+                filters[j].set_params(params[0], params[1]);
+            }
+            for (fin, fout) in zip(input[0].data, output[0].data.iter_mut()) {
+                for (iin, iout, filter) in izip!(fin.data, fout.data.iter_mut(), filters.iter_mut())
+                {
+                    *iout = (softclip(filter.process(iin as f32 / i16::MAX as f32))
+                        * i16::MAX as f32) as i16;
+                }
+            }
             curr_stats.process.toc(cycle_timer.now());
         }) {
             Ok((input_color, output_color)) => {
@@ -355,16 +365,17 @@ fn main() -> ! {
         curr_stats.adc.tic(cycle_timer.now());
         adc_transfer.start(|adc| adc.start_conversion());
         adc_buffer = adc_transfer.next_transfer(adc_buffer).unwrap().0;
-        for frame in &mut packet.data {
-            for v in &mut frame.data {
-                *v = 0 as i16;
-            }
-        }
+        params[0] = 20.0
+            * powf(
+                10.0,
+                (adc_buffer[0] as f32 / 4096.0) * log10f(8000.0 / 20.0),
+            );
+        params[1] = powf(adc_buffer[1] as f32 / 4096.0, 2.0) * 10.0;
         curr_stats.adc.toc(cycle_timer.now());
 
         if time % 1000 == 0 {
             info!("total, max (us): {:?}", last_stats);
-            info!("ADC current sample: {:?}", adc_buffer);
+            info!("ADC current sample: {:?}, Params: {:?}", adc_buffer, params);
             /*
             info!(
                 "Election status: {:?}:{}:{}, leader is {:?}",
