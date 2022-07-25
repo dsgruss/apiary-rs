@@ -19,6 +19,7 @@ pub struct DisplayModule<const I: usize, const O: usize, const P: usize> {
     tx: Option<Sender<PatchUpdate>>,
     rx: Option<Receiver<([Srgb<u8>; I], [Srgb<u8>; O])>>,
     s: Option<Stream>,
+    renderer: Option<Box<dyn Renderer<I, O, P>>>,
     params: Vec<Option<Param>>,
     inputs: Vec<String>,
     input_checks: [bool; I],
@@ -39,6 +40,7 @@ impl<const I: usize, const O: usize, const P: usize> DisplayModule<I, O, P> {
             tx: None,
             rx: None,
             s: None,
+            renderer: None,
             params: (0..P).map(|_| None).collect(),
             inputs: (0..I).map(|i| format!("Input {}", i)).collect(),
             input_checks: [false; I],
@@ -108,6 +110,14 @@ impl<const I: usize, const O: usize, const P: usize> DisplayModule<I, O, P> {
         self
     }
 
+    pub fn renderer<R>(mut self, renderer: R) -> Self
+    where
+        R: Renderer<I, O, P> + 'static,
+    {
+        self.renderer = Some(Box::new(renderer));
+        self
+    }
+
     pub fn start<T>(mut self, p: T) -> Self
     where
         T: Processor<I, O, P> + Send + 'static,
@@ -125,6 +135,56 @@ impl<const I: usize, const O: usize, const P: usize> DisplayModule<I, O, P> {
         }
         thread::spawn(move || process(ui_rx, color_tx, &name, self.color, params, p));
         self
+    }
+
+    pub fn input_jack(&mut self, id: usize, ui: &mut egui::Ui) {
+        if let Some(tx) = &self.tx {
+            if ui
+                .add(Jack::new(
+                    &mut self.input_checks[id],
+                    self.inputs[id].clone(),
+                    self.input_colors[id],
+                ))
+                .changed()
+            {
+                self.open &= tx
+                    .send(PatchUpdate::Input(id, self.input_checks[id]))
+                    .is_ok();
+            }
+        }
+    }
+
+    pub fn param_knob(&mut self, id: usize, ui: &mut egui::Ui) {
+        if let Some(tx) = &self.tx {
+            if let Some(p) = &mut self.params[id] {
+                ui.add(Knob::new(
+                    &mut p.val,
+                    p.name.clone(),
+                    p.unit.clone(),
+                    p.min,
+                    p.max,
+                    p.log,
+                ));
+                self.open &= tx.send(PatchUpdate::Param(id, p.val)).is_ok();
+            }
+        }
+    }
+
+    pub fn output_jack(&mut self, id: usize, ui: &mut egui::Ui) {
+        if let Some(tx) = &self.tx {
+            if ui
+                .add(Jack::new(
+                    &mut self.output_checks[id],
+                    self.outputs[id].clone(),
+                    self.output_colors[id],
+                ))
+                .changed()
+            {
+                self.open = tx
+                    .send(PatchUpdate::Output(id, self.output_checks[id]))
+                    .is_ok();
+            }
+        }
     }
 }
 
@@ -213,51 +273,19 @@ impl<const I: usize, const O: usize, const P: usize> DisplayHandler for DisplayM
                 Err(TryRecvError::Disconnected) => self.open = false,
             }
         }
-        if let Some(tx) = &self.tx {
-            ui.heading(self.name.clone());
-            ui.add_space(20.0);
-            // Add ui and message transmission
-            for i in 0..I {
-                if ui
-                    .add(Jack::new(
-                        &mut self.input_checks[i],
-                        self.inputs[i].clone(),
-                        self.input_colors[i],
-                    ))
-                    .changed()
-                {
-                    self.open &= tx.send(PatchUpdate::Input(i, self.input_checks[i])).is_ok();
-                }
-            }
-            ui.add_space(20.0);
-            for (i, p) in self.params.iter_mut().enumerate() {
-                if let Some(p) = p {
-                    ui.add(Knob::new(
-                        &mut p.val,
-                        p.name.clone(),
-                        p.unit.clone(),
-                        p.min,
-                        p.max,
-                        p.log,
-                    ));
-                    self.open &= tx.send(PatchUpdate::Param(i, p.val)).is_ok();
-                }
-            }
-            ui.add_space(20.0);
-            for i in 0..O {
-                if ui
-                    .add(Jack::new(
-                        &mut self.output_checks[i],
-                        self.outputs[i].clone(),
-                        self.output_colors[i],
-                    ))
-                    .changed()
-                {
-                    self.open = tx
-                        .send(PatchUpdate::Output(i, self.output_checks[i]))
-                        .is_ok();
-                }
-            }
+        ui.heading(self.name.clone());
+        ui.add_space(20.0);
+        // Add ui and message transmission
+        for i in 0..I {
+            self.input_jack(i, ui);
+        }
+        ui.add_space(20.0);
+        for i in 0..P {
+            self.param_knob(i, ui);
+        }
+        ui.add_space(20.0);
+        for i in 0..O {
+            self.output_jack(i, ui);
         }
     }
 }
@@ -269,6 +297,14 @@ pub trait DisplayHandler {
     fn update(&mut self, ui: &mut egui::Ui);
 }
 
+pub trait AsDisplayModule<const I: usize, const O: usize, const P: usize> {
+    fn as_display_module(&self) -> &DisplayModule<I, O, P>;
+}
+
+pub trait AsMutDisplayModule<const I: usize, const O: usize, const P: usize> {
+    fn as_mut_display_module(&mut self) -> &mut DisplayModule<I, O, P>;
+}
+
 pub trait Processor<const I: usize, const O: usize, const P: usize> {
     fn process(
         &mut self,
@@ -276,6 +312,10 @@ pub trait Processor<const I: usize, const O: usize, const P: usize> {
         output: &mut [AudioPacket; O],
         params: &[f32; P],
     );
+}
+
+pub trait Renderer<const I: usize, const O: usize, const P: usize> {
+    fn render(&mut self, disp: &mut DisplayModule<I, O, P>, ui: &mut egui::Ui);
 }
 
 #[derive(Debug)]
