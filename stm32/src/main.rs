@@ -78,7 +78,7 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger {};
 
-use apiary_core::{dsp::Svf, socket_smoltcp::SmoltcpInterface, softclip, Module, Uuid, CHANNELS};
+use apiary_core::{dsp::{LinearTrap}, socket_smoltcp::SmoltcpInterface, softclip, Module, Uuid, CHANNELS};
 
 use apiary::{Ui, UiPins};
 
@@ -283,7 +283,7 @@ fn main() -> ! {
     let mut adc_buffer = cortex_m::singleton!(: [u16; 4] = [0; 4]).unwrap();
     adc_buffer = adc_transfer.next_transfer(adc_buffer).unwrap().0;
     let mut params: [f32; 3] = [0.0; 3];
-    let mut filters: [Svf; CHANNELS] = Default::default();
+    let mut filters: [LinearTrap; CHANNELS] = Default::default();
     info!("ADC current sample: {:?}", adc_buffer);
 
     info!("Starting main loop");

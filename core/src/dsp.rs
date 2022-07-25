@@ -1,8 +1,10 @@
 use core::f32::consts::PI;
 
-use libm::{roundf, tanf};
+use libm::{roundf, tanf, sinf};
 
 use crate::{softclip, SAMPLE_RATE};
+
+// https://www.native-instruments.com/fileadmin/ni_media/downloads/pdf/VAFilterDesign_1.1.1.pdf
 
 pub struct LadderFilter {
     omega0dt: f32,
@@ -155,8 +157,8 @@ pub struct Svf {
 
 impl Svf {
     pub fn set_params(&mut self, cutoff: f32, resonance: f32) {
-        self.g = tanf(PI * cutoff / SAMPLE_RATE);
-        self.r = 1.0 / (resonance + 1.0);
+        self.g = tanf(PI * cutoff.clamp(20.0, 8000.0) / SAMPLE_RATE);
+        self.r = (10.0 - resonance) / 10.0;
         self.h = 1.0 / (1.0 + self.r * self.g + self.g * self.g);
     }
 
@@ -167,5 +169,60 @@ impl Svf {
         let lp = self.g * bp + self.state_2;
         self.state_2 = self.g * bp + lp;
         lp
+    }
+}
+
+#[derive(Default)]
+pub struct NaiveSvf {
+    f: f32,
+    damp: f32,
+    lp: f32,
+    bp: f32,
+}
+
+impl NaiveSvf {
+    pub fn set_params(&mut self, cutoff: f32, resonance: f32) {
+        self.f = 2.0 * sinf(PI * cutoff.clamp(20.0, 8000.0) / SAMPLE_RATE);
+        self.damp = (10.0 - resonance) / 5.0;
+    }
+
+    pub fn process(&mut self, input: f32) -> f32 {
+        let bp_normalized = self.bp * self.damp;
+        let notch = input - bp_normalized;
+        self.lp += self.f * self.bp;
+        let hp = notch - self.lp;
+        self.bp += self.f * hp;
+        self.lp
+    }
+}
+
+// https://www.cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
+#[derive(Default)]
+pub struct LinearTrap {
+    g: f32,
+    k: f32,
+    a1: f32,
+    a2: f32,
+    a3: f32,
+    ic2eq: f32,
+    ic1eq: f32,
+}
+
+impl LinearTrap {
+    pub fn set_params(&mut self, cutoff: f32, resonance: f32) {
+        self.g = tanf(PI * cutoff.clamp(20.0, 8000.0) / SAMPLE_RATE);
+        self.k = 2.0 - 2.0 * (resonance / 10.0);
+        self.a1 = 1.0 / (1.0 + self.g * (self.g + self.k));
+        self.a2 = self.g * self.a1;
+        self.a3 = self.g * self.a2;
+    }
+
+    pub fn process(&mut self, v0: f32) -> f32 {
+        let v3 = v0 - self.ic2eq;
+        let v1 = self.a1 * self.ic1eq + self.a2 * v3;
+        let v2 = self.ic2eq + self.a2 * self.ic1eq + self.a3 * v3;
+        self.ic1eq = 2.0 * v1 - self.ic1eq;
+        self.ic2eq = 2.0 * v2 - self.ic2eq;
+        v2
     }
 }

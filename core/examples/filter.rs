@@ -1,12 +1,10 @@
-use apiary_core::{voct_to_freq_scale, AudioPacket, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
+use apiary_core::{voct_to_freq_scale, AudioPacket, BLOCK_SIZE, CHANNELS, dsp:: LinearTrap};
 use rand::Rng;
 
 use crate::display_module::{DisplayModule, Processor};
 
-use apiary_core::dsp::LadderFilter;
-
 pub struct Filter {
-    filters: [LadderFilter; CHANNELS],
+    filters: [LinearTrap; CHANNELS],
 }
 
 const FREQ_PARAM: usize = 0;
@@ -27,7 +25,7 @@ impl Filter {
         DisplayModule::new()
             .name("Filter")
             .param(FREQ_PARAM, 20.0, 8000.0, 4000.0, "Cutoff", " Hz", true)
-            .param(RES_PARAM, 0.0, 1.0, 0.0, "Resonance", "", false)
+            .param(RES_PARAM, 0.0, 1.0, 0.75, "Resonance", "", false)
             .param(CONTOUR_PARAM, 0.0, 100.0, 0.0, "Contour", "%", false)
             .input(IN_INPUT, "Audio")
             .input(KEY_INPUT, "Key Track")
@@ -65,7 +63,7 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Filter {
                 output[LPF_OUTPUT].data[i].data[j] = (self.filters[j]
                     .process(
                         input[IN_INPUT].data[i].data[j] as f32 / i16::MAX as f32 + rng.gen_range(-1e-6..1e-6),
-                        1.0 / SAMPLE_RATE,
+                        // 1.0 / SAMPLE_RATE,
                     ) * i16::MAX as f32)
                     .round() as i16;
             }
