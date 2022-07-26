@@ -22,8 +22,8 @@ use stm32f4xx_hal::{
     serial::{config::DmaConfig, Config, Tx},
 };
 
+use core::cell::RefCell;
 use core::fmt::{Debug, Write};
-use core::{cell::RefCell, iter::zip};
 use fugit::RateExtU32;
 use heapless::spsc::Queue;
 
@@ -78,9 +78,19 @@ impl log::Log for SerialLogger {
 
 static LOGGER: SerialLogger = SerialLogger {};
 
-use apiary_core::{dsp::{LinearTrap}, socket_smoltcp::SmoltcpInterface, softclip, Module, Uuid, CHANNELS};
+use apiary_core::{
+    dsp::LinearTrap, socket_smoltcp::SmoltcpInterface, softclip, Module, Uuid, CHANNELS,
+};
 
 use apiary::{Ui, UiPins};
+
+const INPUT: usize = 0;
+const KEY_TRACK: usize = 1;
+const CONTOUR: usize = 2;
+const NUM_INPUTS: usize = 3;
+
+const OUTPUT: usize = 0;
+const NUM_OUTPUTS: usize = 1;
 
 #[entry]
 fn main() -> ! {
@@ -184,10 +194,10 @@ fn main() -> ! {
     input_green.enable();
 
     let ui_pins = UiPins {
-        sw_sig2: gpiod.pd12,
-        sw_sig4: gpioc.pc8,
-        sw_light2: gpiod.pd13,
-        sw_light4: gpioc.pc9,
+        input: gpioc.pc8,
+        key_track: gpioc.pc9,
+        contour: gpiod.pd12,
+        output: gpiod.pd13,
     };
     let mut ui = Ui::new(ui_pins);
 
@@ -221,8 +231,11 @@ fn main() -> ! {
     nb::block!(cycle_timer.wait()).unwrap();
 
     let mut storage = Default::default();
-    let mut module: Module<_, _, 1, 1> = Module::new(
-        SmoltcpInterface::<_, 1, 1, 3>::new(&mut eth_dma, &mut storage),
+    let mut module: Module<_, _, NUM_INPUTS, NUM_OUTPUTS> = Module::new(
+        SmoltcpInterface::<_, NUM_INPUTS, NUM_OUTPUTS, { NUM_INPUTS + NUM_OUTPUTS + 1 }>::new(
+            &mut eth_dma,
+            &mut storage,
+        ),
         rand_source,
         uuid.clone(),
         220,
@@ -310,22 +323,35 @@ fn main() -> ! {
         time += 1;
 
         curr_stats.ui.tic(cycle_timer.now());
-        let (changed, sw2, sw4) = ui.poll();
-        if changed {
-            module.set_input_patch_enabled(0, sw2).unwrap();
-            module.set_output_patch_enabled(0, sw4).unwrap();
+        let res = ui.poll();
+        if res.changed {
+            module
+                .set_input_patch_enabled(INPUT, res.input_pressed)
+                .unwrap();
+            module
+                .set_input_patch_enabled(CONTOUR, res.contour_pressed)
+                .unwrap();
+            module
+                .set_output_patch_enabled(OUTPUT, res.output_pressed)
+                .unwrap();
         }
         curr_stats.ui.toc(cycle_timer.now());
 
         curr_stats.poll.tic(cycle_timer.now());
         match module.poll(time, |input, output| {
             curr_stats.process.tic(cycle_timer.now());
-            for j in 0..CHANNELS {
-                filters[j].set_params(params[0], params[1]);
-            }
-            for (fin, fout) in zip(input[0].data, output[0].data.iter_mut()) {
-                for (iin, iout, filter) in izip!(fin.data, fout.data.iter_mut(), filters.iter_mut())
+            for (fin, fc, fout) in izip!(
+                input[INPUT].data,
+                input[CONTOUR].data,
+                output[OUTPUT].data.iter_mut()
+            ) {
+                for (iin, ic, iout, filter) in
+                    izip!(fin.data, fc.data, fout.data.iter_mut(), filters.iter_mut())
                 {
+                    filter.set_params(
+                        params[0] + params[2] * 8000.0 * ic as f32 / i16::MAX as f32,
+                        params[1],
+                    );
                     *iout = (softclip(filter.process(iin as f32 / i16::MAX as f32))
                         * i16::MAX as f32) as i16;
                 }
@@ -371,6 +397,7 @@ fn main() -> ! {
                 (adc_buffer[0] as f32 / 4096.0) * log10f(8000.0 / 20.0),
             );
         params[1] = powf(adc_buffer[1] as f32 / 4096.0, 2.0) * 10.0;
+        params[2] = adc_buffer[2] as f32 / 4096.0;
         curr_stats.adc.toc(cycle_timer.now());
 
         if time % 1000 == 0 {

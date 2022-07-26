@@ -63,55 +63,76 @@ impl<const P: char, const N: u8> Led<P, N> {
 }
 
 pub struct UiPins {
-    pub sw_sig2: gpio::Pin<'D', 12>,
-    pub sw_light2: gpio::Pin<'D', 13>,
-    pub sw_sig4: gpio::Pin<'C', 8>,
-    pub sw_light4: gpio::Pin<'C', 9>,
+    pub input: gpio::Pin<'C', 8>,
+    pub key_track: gpio::Pin<'C', 9>,
+    pub contour: gpio::Pin<'D', 12>,
+    pub output: gpio::Pin<'D', 13>,
 }
 
 pub struct Ui {
-    sw_sig2: Switch<'D', 12>,
-    sw_light2: Led<'D', 13>,
-    sw_sig4: Switch<'C', 8>,
-    sw_light4: Led<'C', 9>,
+    input: Switch<'C', 8>,
+    key_track: Switch<'C', 9>,
+    contour: Switch<'D', 12>,
+    output: Switch<'D', 13>,
 }
-
-// TIM2 CH1 : PA15 Red
-// TIM2 CH2 : PB3 Blue
-// TIM3 CH1 : PB4 Green
 
 impl Ui {
     pub fn new(pins: UiPins) -> Ui {
         Ui {
-            sw_sig2: Switch::new(pins.sw_sig2),
-            sw_light2: Led::new(pins.sw_light2),
-            sw_sig4: Switch::new(pins.sw_sig4),
-            sw_light4: Led::new(pins.sw_light4),
+            input: Switch::new(pins.input),
+            key_track: Switch::new(pins.key_track),
+            contour: Switch::new(pins.contour),
+            output: Switch::new(pins.output),
         }
     }
 
-    pub fn poll(&mut self) -> (bool, bool, bool) {
-        self.sw_sig2.debounce();
-        self.sw_sig4.debounce();
-        if self.sw_sig2.just_pressed() {
-            info!("SW2 switch pressed");
-            self.sw_light2.toggle();
+    pub fn poll(&mut self) -> UiUpdate {
+        self.input.debounce();
+        self.key_track.debounce();
+        self.contour.debounce();
+        self.output.debounce();
+        if self.input.just_pressed() {
+            info!("input switch pressed");
         }
-        if self.sw_sig2.released() {
-            info!("SW2 switch released");
+        if self.input.released() {
+            info!("input switch released");
         }
-        if self.sw_sig4.just_pressed() {
-            info!("SW4 switch pressed");
-            self.sw_light4.toggle();
+        if self.key_track.just_pressed() {
+            info!("key_track switch pressed");
         }
-        if self.sw_sig4.released() {
-            info!("SW4 switch released");
+        if self.key_track.released() {
+            info!("key_track switch released");
+        }
+        if self.contour.just_pressed() {
+            info!("contour switch pressed");
+        }
+        if self.contour.released() {
+            info!("contour switch released");
+        }
+        if self.output.just_pressed() {
+            info!("output switch pressed");
+        }
+        if self.output.released() {
+            info!("output switch released");
         }
 
-        (
-            self.sw_sig2.changed() || self.sw_sig4.changed(),
-            self.sw_sig2.just_pressed(),
-            self.sw_sig4.just_pressed(),
-        )
+        UiUpdate {
+            changed: self.input.changed()
+                || self.key_track.changed()
+                || self.contour.changed()
+                || self.output.changed(),
+            input_pressed: self.input.just_pressed(),
+            key_track_pressed: self.key_track.just_pressed(),
+            contour_pressed: self.contour.just_pressed(),
+            output_pressed: self.output.just_pressed(),
+        }
     }
+}
+
+pub struct UiUpdate {
+    pub changed: bool,
+    pub input_pressed: bool,
+    pub key_track_pressed: bool,
+    pub contour_pressed: bool,
+    pub output_pressed: bool,
 }
