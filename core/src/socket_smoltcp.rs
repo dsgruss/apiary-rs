@@ -113,6 +113,7 @@ where
 
         let mut input_jack_handles: [SocketHandle; I] = [Default::default(); I];
 
+        let mut i = 0;
         for (rx_meta, rx_payload, tx_meta, tx_payload) in izip!(
             storage.jack_rx_metadata_buffers.iter_mut(),
             storage.jack_rx_payload_buffers.iter_mut(),
@@ -123,7 +124,8 @@ where
                 UdpSocketBuffer::new(&mut rx_meta[..], &mut rx_payload[..]),
                 UdpSocketBuffer::new(&mut tx_meta[..], &mut tx_payload[..]),
             );
-            input_jack_handles[0] = iface.add_socket(input_jack_socket);
+            input_jack_handles[i] = iface.add_socket(input_jack_socket);
+            i += 1;
         }
         let broadcast_endpoint = IpEndpoint::from_str(crate::PATCH_EP).unwrap();
 
@@ -281,7 +283,10 @@ where
             }
             info!("Input jack {}: Leaving group", jack_id);
         }
-        info!("Input jack {}: Joining group and opening socket", jack_id);
+        info!(
+            "Input jack {}: Joining group {:?} and opening socket",
+            jack_id, ep
+        );
         if let Err(_) = self.iface.join_multicast_group(ep.addr, t) {
             return Err(Error::Network);
         }
