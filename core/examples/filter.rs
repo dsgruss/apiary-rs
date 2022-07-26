@@ -1,4 +1,4 @@
-use apiary_core::{voct_to_freq_scale, AudioPacket, BLOCK_SIZE, CHANNELS, dsp:: LinearTrap};
+use apiary_core::{dsp::LinearTrap, voct_to_freq_scale, AudioPacket, BLOCK_SIZE, CHANNELS};
 use rand::Rng;
 
 use crate::display_module::{DisplayModule, Processor};
@@ -60,11 +60,11 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Filter {
                         ),
                     params[RES_PARAM].powi(2) * 10.0,
                 );
-                output[LPF_OUTPUT].data[i].data[j] = (self.filters[j]
-                    .process(
-                        input[IN_INPUT].data[i].data[j] as f32 / i16::MAX as f32 + rng.gen_range(-1e-6..1e-6),
-                        // 1.0 / SAMPLE_RATE,
-                    ) * i16::MAX as f32)
+                output[LPF_OUTPUT].data[i].data[j] = (self.filters[j].process(
+                    input[IN_INPUT].data[i].data[j] as f32 / i16::MAX as f32
+                        + rng.gen_range(-1e-6..1e-6),
+                    // 1.0 / SAMPLE_RATE,
+                ) * i16::MAX as f32)
                     .round() as i16;
             }
         }

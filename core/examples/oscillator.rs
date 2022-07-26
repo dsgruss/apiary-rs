@@ -55,7 +55,8 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Oscillator {
         for i in 0..BLOCK_SIZE {
             self.level += 0.0025 * (params[LEVEL_PARAM] - self.level);
             for j in 0..CHANNELS {
-                self.level_input[j] += 0.01 * (input[LEVEL_INPUT].data[i].data[j] as f32 - self.level_input[j]);
+                self.level_input[j] +=
+                    0.01 * (input[LEVEL_INPUT].data[i].data[j] as f32 - self.level_input[j]);
                 let a = self.level_input[j] * self.level;
                 output[SIN_OUTPUT].data[i].data[j] =
                     (a * (2.0 * PI * self.phase[j]).sin()).round() as i16;
