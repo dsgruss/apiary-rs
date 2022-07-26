@@ -22,8 +22,8 @@ use stm32f4xx_hal::{
     serial::{config::DmaConfig, Config, Tx},
 };
 
-use core::cell::RefCell;
 use core::fmt::{Debug, Write};
+use core::{cell::RefCell, iter::zip};
 use fugit::RateExtU32;
 use heapless::spsc::Queue;
 
@@ -79,7 +79,8 @@ impl log::Log for SerialLogger {
 static LOGGER: SerialLogger = SerialLogger {};
 
 use apiary_core::{
-    dsp::LinearTrap, socket_smoltcp::SmoltcpInterface, softclip, Module, Uuid, CHANNELS,
+    dsp::LinearTrap, socket_smoltcp::SmoltcpInterface, softclip, voct_to_freq_scale, Module, Uuid,
+    CHANNELS,
 };
 
 use apiary::{Ui, UiPins};
@@ -329,6 +330,9 @@ fn main() -> ! {
                 .set_input_patch_enabled(INPUT, res.input_pressed)
                 .unwrap();
             module
+                .set_input_patch_enabled(KEY_TRACK, res.key_track_pressed)
+                .unwrap();
+            module
                 .set_input_patch_enabled(CONTOUR, res.contour_pressed)
                 .unwrap();
             module
@@ -340,18 +344,24 @@ fn main() -> ! {
         curr_stats.poll.tic(cycle_timer.now());
         match module.poll(time, |input, output| {
             curr_stats.process.tic(cycle_timer.now());
-            for (fin, fc, fout) in izip!(
-                input[INPUT].data,
-                input[CONTOUR].data,
-                output[OUTPUT].data.iter_mut()
-            ) {
-                for (iin, ic, iout, filter) in
-                    izip!(fin.data, fc.data, fout.data.iter_mut(), filters.iter_mut())
+            // Processing time is too slow to do this every audio frame...
+            for i in 0..CHANNELS {
+                filters[i].set_params(
+                    params[0]
+                        * voct_to_freq_scale(
+                            input[KEY_TRACK].data[0].data[i] as f32
+                                + input[CONTOUR].data[0].data[i] as f32 / i16::MAX as f32
+                                    * params[2]
+                                    * 512.0
+                                    * 12.0
+                                    * 4.0,
+                        ),
+                    params[1],
+                );
+            }
+            for (fin, fout) in zip(input[INPUT].data, output[OUTPUT].data.iter_mut()) {
+                for (iin, iout, filter) in izip!(fin.data, fout.data.iter_mut(), filters.iter_mut())
                 {
-                    filter.set_params(
-                        params[0] + params[2] * 8000.0 * ic as f32 / i16::MAX as f32,
-                        params[1],
-                    );
                     *iout = (softclip(filter.process(iin as f32 / i16::MAX as f32))
                         * i16::MAX as f32) as i16;
                 }
@@ -391,11 +401,13 @@ fn main() -> ! {
         curr_stats.adc.tic(cycle_timer.now());
         adc_transfer.start(|adc| adc.start_conversion());
         adc_buffer = adc_transfer.next_transfer(adc_buffer).unwrap().0;
-        params[0] = 20.0
-            * powf(
-                10.0,
-                (adc_buffer[0] as f32 / 4096.0) * log10f(8000.0 / 20.0),
-            );
+        params[0] += 0.01
+            * (20.0
+                * powf(
+                    10.0,
+                    (adc_buffer[0] as f32 / 4096.0) * log10f(8000.0 / 20.0),
+                )
+                - params[0]);
         params[1] = powf(adc_buffer[1] as f32 / 4096.0, 2.0) * 10.0;
         params[2] = adc_buffer[2] as f32 / 4096.0;
         curr_stats.adc.toc(cycle_timer.now());
