@@ -1,8 +1,11 @@
 use core::f32::consts::PI;
 
-use libm::{roundf, tanf, sinf};
+use libm::{roundf, sinf, tanf};
 
 use crate::{softclip, SAMPLE_RATE};
+
+const PI_2: f32 = PI * PI;
+const PI_3: f32 = PI * PI_2;
 
 // https://www.native-instruments.com/fileadmin/ni_media/downloads/pdf/VAFilterDesign_1.1.1.pdf
 
@@ -97,7 +100,8 @@ fn fpmul(x: i16, y: i16) -> i16 {
 
 impl LadderFilterFP {
     pub fn set_params(&mut self, cutoff: f32, resonance: f32) {
-        self.omega0dt = roundf(2.0 * PI * cutoff.clamp(0.0, 8000.0) / SAMPLE_RATE * i16::MAX as f32) as i16;
+        self.omega0dt =
+            roundf(2.0 * PI * cutoff.clamp(0.0, 8000.0) / SAMPLE_RATE * i16::MAX as f32) as i16;
         self.resonance = resonance;
     }
 
@@ -210,13 +214,14 @@ pub struct LinearTrap {
 
 impl LinearTrap {
     pub fn set_params(&mut self, cutoff: f32, resonance: f32) {
-        self.g = tanf(PI * cutoff.clamp(20.0, 8000.0) / SAMPLE_RATE);
+        // self.g = tanf(PI * cutoff.clamp(20.0, 8000.0) / SAMPLE_RATE);
+        let f = cutoff.clamp(20.0, 8000.0) / SAMPLE_RATE;
+        self.g = f * (PI + 3.736e-1 * PI_3 * f * f);
         self.k = 2.0 - 2.0 * (resonance / 10.0);
         self.a1 = 1.0 / (1.0 + self.g * (self.g + self.k));
         self.a2 = self.g * self.a1;
         self.a3 = self.g * self.a2;
     }
-
     pub fn process(&mut self, v0: f32) -> f32 {
         let v3 = v0 - self.ic2eq;
         let v1 = self.a1 * self.ic1eq + self.a2 * v3;
