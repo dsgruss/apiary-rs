@@ -29,9 +29,10 @@ default-features = false
 features = ["network-smoltcp"]
 
 [dependencies.stm32-eth]
-git = "https://github.com/stm32-rs/stm32-eth"
+# git = "https://github.com/stm32-rs/stm32-eth"
+path = "../../stm32-eth"
 features = ["stm32f429", "smoltcp-phy"]
-rev = "df8b0f9"
+# rev = "df8b0f9"
 
 # this lets you use `cargo fix`!
 [[bin]]
