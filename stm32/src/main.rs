@@ -79,18 +79,13 @@ impl log::Log for SerialLogger {
 static LOGGER: SerialLogger = SerialLogger {};
 
 use apiary_core::{
-    dsp::LinearTrap, socket_smoltcp::SmoltcpInterface, softclip, voct_to_freq_scale, Module, Uuid,
-    CHANNELS,
+    dsp::LinearTrap, socket_smoltcp::SmoltcpInterface, softclip, voct_to_freq_scale, AudioPacket,
+    Module, Uuid, CHANNELS,
 };
 
 use apiary::{Ui, UiPins};
 
-const INPUT: usize = 0;
-const KEY_TRACK: usize = 1;
-const CONTOUR: usize = 2;
 const NUM_INPUTS: usize = 3;
-
-const OUTPUT: usize = 0;
 const NUM_OUTPUTS: usize = 1;
 
 #[entry]
@@ -146,7 +141,7 @@ fn main() -> ! {
         .unwrap();
     info!("Serial debug active");
 
-    let uuid = Uuid::from("hardware");
+    let uuid = Uuid::from("hardware:filter:0");
     let rand_source = p.RNG.constrain(&clocks);
 
     // TIM2 CH1 : PA15 Red
@@ -243,6 +238,12 @@ fn main() -> ! {
         0,
     );
 
+    let jack_input = module.add_input_jack().unwrap();
+    let jack_key_track = module.add_input_jack().unwrap();
+    let jack_contour = module.add_input_jack().unwrap();
+
+    let jack_output = module.add_output_jack().unwrap();
+
     info!("Sockets created");
 
     // ADC3 GPIO Configuration
@@ -327,30 +328,31 @@ fn main() -> ! {
         let res = ui.poll();
         if res.changed {
             module
-                .set_input_patch_enabled(INPUT, res.input_pressed)
+                .set_input_patch_enabled(jack_input, res.input_pressed)
                 .unwrap();
             module
-                .set_input_patch_enabled(KEY_TRACK, res.key_track_pressed)
+                .set_input_patch_enabled(jack_key_track, res.key_track_pressed)
                 .unwrap();
             module
-                .set_input_patch_enabled(CONTOUR, res.contour_pressed)
+                .set_input_patch_enabled(jack_contour, res.contour_pressed)
                 .unwrap();
             module
-                .set_output_patch_enabled(OUTPUT, res.output_pressed)
+                .set_output_patch_enabled(jack_output, res.output_pressed)
                 .unwrap();
         }
         curr_stats.ui.toc(cycle_timer.now());
 
         curr_stats.poll.tic(cycle_timer.now());
-        match module.poll(time, |input, output| {
+        match module.poll(time, |block| {
             curr_stats.process.tic(cycle_timer.now());
             // Processing time is too slow to do this every audio frame...
             for i in 0..CHANNELS {
                 filters[i].set_params(
                     params[0]
                         * voct_to_freq_scale(
-                            input[KEY_TRACK].data[0].data[i] as f32
-                                + input[CONTOUR].data[0].data[i] as f32 / i16::MAX as f32
+                            block.get_input(jack_key_track).data[0].data[i] as f32
+                                + block.get_input(jack_contour).data[0].data[i] as f32
+                                    / i16::MAX as f32
                                     * params[2]
                                     * 512.0
                                     * 12.0
@@ -359,38 +361,41 @@ fn main() -> ! {
                     params[1],
                 );
             }
-            for (fin, fout) in zip(input[INPUT].data, output[OUTPUT].data.iter_mut()) {
+            let mut output: AudioPacket = Default::default();
+            for (fin, fout) in zip(block.get_input(jack_input).data, output.data.iter_mut()) {
                 for (iin, iout, filter) in izip!(fin.data, fout.data.iter_mut(), filters.iter_mut())
                 {
                     *iout = (softclip(filter.process(iin as f32 / i16::MAX as f32))
                         * i16::MAX as f32) as i16;
                 }
             }
+            block.set_output(jack_output, output);
             curr_stats.process.toc(cycle_timer.now());
         }) {
-            Ok((input_color, output_color)) => {
+            Ok(update) => {
+                let input_color = update.get_input_color(jack_input);
+                let output_color = update.get_output_color(jack_output);
                 input_red.set_duty(
-                    (input_red.get_max_duty() as u32 * (255 - input_color[0].red as u32) / 256)
-                        as u16,
+                    (input_red.get_max_duty() as u32 * (255 - input_color.red as u32) / 256) as u16,
                 );
                 input_green.set_duty(
-                    (input_green.get_max_duty() as u32 * (255 - input_color[0].green as u32) / 256)
+                    (input_green.get_max_duty() as u32 * (255 - input_color.green as u32) / 256)
                         as u16,
                 );
                 input_blue.set_duty(
-                    (input_blue.get_max_duty() as u32 * (255 - input_color[0].blue as u32) / 256)
+                    (input_blue.get_max_duty() as u32 * (255 - input_color.blue as u32) / 256)
                         as u16,
                 );
                 output_red.set_duty(
-                    (output_red.get_max_duty() as u32 * (255 - output_color[0].red as u32) / 256)
+                    (output_red.get_max_duty() as u32 * (255 - output_color.red as u32) / 256)
                         as u16,
                 );
                 output_green.set_duty(
-                    (output_green.get_max_duty() as u32 * (255 - output_color[0].green as u32)
-                        / 256) as u16,
+                    (output_green.get_max_duty() as u32 * (255 - output_color.green as u32) / 256)
+                        as u16,
                 );
                 output_blue.set_duty(
-                    (output_blue.get_max_duty() as u32 * (255 - output_color[0].blue as u32) / 256)
+                    (output_blue.get_max_duty() as u32 * (255 - output_color.blue as u32) / 256)
                         as u16,
                 );
             }
