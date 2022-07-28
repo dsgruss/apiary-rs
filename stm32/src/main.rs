@@ -41,6 +41,7 @@ type SerialDma =
 static TRANSFER: Mutex<RefCell<Option<SerialDma>>> = Mutex::new(RefCell::new(None));
 static LOG_QUEUE: Mutex<RefCell<Queue<u8, LOG_BUFFER_SIZE>>> =
     Mutex::new(RefCell::new(Queue::new()));
+static TRANSFER_IDLE: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 
 struct SerialLogger;
 
@@ -61,12 +62,13 @@ impl log::Log for SerialLogger {
                             break;
                         }
                     }
-                    // Safety: since the interrupt handler controls the read end of the `log_queue`,
-                    // we send an empty buffer to start another transfer. This will have the effect
-                    // of restarting and overwriting a transfer if one is currently in progress.
-                    unsafe {
-                        static mut BUFFER: [u8; LOG_BUFFER_SIZE] = [0; LOG_BUFFER_SIZE];
-                        transfer.next_transfer(&mut BUFFER).unwrap();
+                    // Currently, the only way I can think to get back to the interrupt handler
+                    // without unsafe code is to end a transfer with all null chars, then restart
+                    // the transfer and resend the group of null chars...
+                    let mut transfer_idle = TRANSFER_IDLE.borrow(cs).borrow_mut();
+                    if *transfer_idle {
+                        *transfer_idle = false;
+                        transfer.start(|_| {});
                     }
                 }
             });
@@ -115,8 +117,7 @@ fn main() -> ! {
     let mut tx = p.USART3.tx(tx_pin, serial_config, &clocks).unwrap();
     writeln!(tx, "\n\n ☢️📶📼 v0.1.0\n\n").unwrap();
 
-    let init_buffer =
-        cortex_m::singleton!(: [u8; LOG_BUFFER_SIZE] = [70; LOG_BUFFER_SIZE]).unwrap();
+    let init_buffer = cortex_m::singleton!(: [u8; LOG_BUFFER_SIZE] = [0; LOG_BUFFER_SIZE]).unwrap();
     let transfer: SerialDma = Transfer::init_memory_to_peripheral(
         StreamsTuple::new(p.DMA1).3,
         tx,
@@ -491,7 +492,9 @@ fn DMA1_STREAM3() {
             if Stream3::<pac::DMA1>::get_transfer_complete_flag() {
                 transfer.clear_transfer_complete_interrupt();
                 let mut log_queue = LOG_QUEUE.borrow(cs).borrow_mut();
-                if !log_queue.is_empty() {
+                let mut transfer_idle = TRANSFER_IDLE.borrow(cs).borrow_mut();
+                if !*transfer_idle {
+                    *transfer_idle = log_queue.is_empty();
                     // Safety: This shouldn't be necessary in the long run: `next_transfer` returns
                     // the reference to the old buffer, so ideally we would swap them here rather
                     // than relying on the single reference. This method found in the spi_dma
