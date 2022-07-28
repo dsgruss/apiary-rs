@@ -39,6 +39,7 @@ impl Oscilloscope {
                 Default::default(),
                 0,
             );
+            let input_jack = module.add_input_jack().unwrap();
             let start = Instant::now();
             let mut time: i64 = 0;
 
@@ -46,7 +47,7 @@ impl Oscilloscope {
                 while time < start.elapsed().as_millis() as i64 {
                     match ui_rx.try_recv() {
                         Ok(checked) => {
-                            if let Err(e) = module.set_input_patch_enabled(0, checked) {
+                            if let Err(e) = module.set_input_patch_enabled(input_jack, checked) {
                                 info!("Error in connecting jack: {:?}", e);
                             }
                         }
@@ -56,8 +57,8 @@ impl Oscilloscope {
 
                     let mut pkt = Default::default();
                     module
-                        .poll(time, |input, _| {
-                            pkt = input[0];
+                        .poll(time, |block| {
+                            pkt = *block.get_input(input_jack);
                         })
                         .unwrap();
                     if time % 10 == 0 {

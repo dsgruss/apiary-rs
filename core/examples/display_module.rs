@@ -6,7 +6,7 @@ use rand::Rng;
 use std::{
     sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender, TryRecvError, TrySendError},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant}, iter::zip,
 };
 
 use crate::common::{Jack, Knob, SelectedInterface};
@@ -215,17 +215,19 @@ fn process<const I: usize, const O: usize, const P: usize, T: Processor<I, O, P>
         color,
         time,
     );
+    let input_handles = [0; I].map(|_| module.add_input_jack().unwrap());
+    let output_handles = [0; O].map(|_| module.add_output_jack().unwrap());
 
     'outer: loop {
         while time < start.elapsed().as_millis() as i64 {
             match rx.try_recv() {
                 Ok(PatchUpdate::Input(id, on)) => {
-                    if let Err(e) = module.set_input_patch_enabled(id, on) {
+                    if let Err(e) = module.set_input_patch_enabled(input_handles[id], on) {
                         info!("Error {:?}", e);
                     }
                 }
                 Ok(PatchUpdate::Output(id, on)) => {
-                    if let Err(e) = module.set_output_patch_enabled(id, on) {
+                    if let Err(e) = module.set_output_patch_enabled(output_handles[id], on) {
                         info!("Error {:?}", e);
                     }
                 }
@@ -236,11 +238,18 @@ fn process<const I: usize, const O: usize, const P: usize, T: Processor<I, O, P>
                 Err(TryRecvError::Disconnected) => break 'outer,
             }
             let res = module
-                .poll(time, |input, output| {
-                    p.process(input, output, &params);
+                .poll(time, |block| {
+                    let input = input_handles.map(|h| block.get_input(h));
+                    let mut output = [Default::default(); O];
+                    p.process(input, &mut output, &params);
+                    for (h, o) in zip(output_handles, output) {
+                        block.set_output(h, o);
+                    }
                 })
                 .unwrap();
-            if let Err(TrySendError::Disconnected(_)) = tx.try_send(res) {
+            let colors = (input_handles.map(|h| res.get_input_color(h)),
+        output_handles.map(|h| res.get_output_color(h)));
+            if let Err(TrySendError::Disconnected(_)) = tx.try_send(colors) {
                 break 'outer;
             }
             time += 1;
@@ -308,7 +317,7 @@ pub trait AsMutDisplayModule<const I: usize, const O: usize, const P: usize> {
 pub trait Processor<const I: usize, const O: usize, const P: usize> {
     fn process(
         &mut self,
-        input: &[AudioPacket; I],
+        input: [&AudioPacket; I],
         output: &mut [AudioPacket; O],
         params: &[f32; P],
     );

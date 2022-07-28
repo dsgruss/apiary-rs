@@ -235,7 +235,14 @@ pub enum Error {
     NoData,
     InvalidJackId,
     Parse,
+    StorageFull,
 }
+
+#[derive(Clone, Copy)]
+pub struct InputJackHandle(usize);
+
+#[derive(Clone, Copy)]
+pub struct OutputJackHandle(usize);
 
 /// General backend communication control.
 ///
@@ -281,11 +288,11 @@ pub struct Module<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> 
     leader_election: LeaderElection<R>,
     input_patch_enabled: u16,
     output_patch_enabled: u16,
-    input_buffer: [AudioPacket; I],
-    output_buffer: [AudioPacket; O],
     dropped_packets: u32,
     patch_state: PatchState,
     input_colors: [u16; I],
+    input_jack_handles: usize,
+    output_jack_handles: usize,
 }
 
 impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> {
@@ -298,20 +305,41 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             leader_election,
             input_patch_enabled: 0,
             output_patch_enabled: 0,
-            input_buffer: [Default::default(); I],
-            output_buffer: [Default::default(); O],
             dropped_packets: 0,
             patch_state: PatchState::Idle,
             input_colors: [0; I],
+            input_jack_handles: 0,
+            output_jack_handles: 0,
         }
     }
 
-    pub fn poll<F>(&mut self, time: i64, f: F) -> Result<([Srgb<u8>; I], [Srgb<u8>; O]), Error>
+    pub fn add_input_jack(&mut self) -> Result<InputJackHandle, Error> {
+        if self.input_jack_handles == I {
+            Err(Error::StorageFull)
+        } else {
+            let handle = InputJackHandle(self.input_jack_handles);
+            self.input_jack_handles += 1;
+            Ok(handle)
+        }
+    }
+
+    pub fn add_output_jack(&mut self) -> Result<OutputJackHandle, Error> {
+        if self.output_jack_handles == O {
+            Err(Error::StorageFull)
+        } else {
+            let handle = OutputJackHandle(self.output_jack_handles);
+            self.output_jack_handles += 1;
+            Ok(handle)
+        }
+    }
+
+    pub fn poll<F>(&mut self, time: i64, f: F) -> Result<PollUpdate<I, O>, Error>
     where
-        F: FnOnce(&[AudioPacket; I], &mut [AudioPacket; O]),
+        F: FnOnce(&mut ProcessBlock<I, O>),
     {
         let mut input_colors: [Srgb<u8>; I] = [Default::default(); I];
         let mut output_colors: [Srgb<u8>; O] = [Default::default(); O];
+        let mut block: ProcessBlock<I, O> = Default::default();
         self.interface.poll(time)?;
         if self.can_send() {
             if let Ok(d) = self.recv_directive() {
@@ -341,8 +369,8 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             }
             for i in 0..I {
                 if let Ok(a) = self.jack_recv(i) {
-                    self.input_buffer[i] = a;
-                    let avg = self.input_buffer[i].avg();
+                    block.input[i] = a;
+                    let avg = block.input[i].avg();
                     let c: Srgb = Hsv::new(
                         self.input_colors[i] as f32,
                         1.0,
@@ -354,11 +382,11 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                     self.dropped_packets += 1;
                 }
             }
-            f(&self.input_buffer, &mut self.output_buffer);
+            f(&mut block);
             for i in 0..O {
-                let buf = self.output_buffer[i];
+                let buf = block.output[i];
                 self.jack_send(i, &buf).unwrap();
-                let avg = self.output_buffer[i].avg();
+                let avg = block.output[i].avg();
                 let c: Srgb =
                     Hsv::new(self.color as f32, 1.0, avg * 16.0 / i16::MAX as f32).into_color();
                 output_colors[i] = c.into_format();
@@ -379,8 +407,8 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             PatchState::Blocked => Srgb::new(255, 0, 0),
         };
         match self.patch_state {
-            PatchState::Idle => Ok((input_colors, output_colors)),
-            _ => Ok(([color; I], [color; O])),
+            PatchState::Idle => Ok(PollUpdate{ input_colors, output_colors }),
+            _ => Ok(PollUpdate { input_colors: [color; I], output_colors: [color; O] }),
         }
     }
 
@@ -417,11 +445,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         }
     }
 
-    pub fn jack_connect(&mut self, jack_id: usize, addr: [u8; 4], time: i64) -> Result<(), Error> {
-        self.interface.jack_connect(jack_id, addr, time)
-    }
-
-    pub fn jack_recv(&mut self, jack_id: usize) -> Result<AudioPacket, Error> {
+    fn jack_recv(&mut self, jack_id: usize) -> Result<AudioPacket, Error> {
         let mut buf = [0; 2048];
         let size = self.interface.jack_recv(jack_id, &mut buf)?;
         match AudioPacket::read_from(&mut buf[0..size]) {
@@ -430,7 +454,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         }
     }
 
-    pub fn jack_send(&mut self, jack_id: usize, data: &AudioPacket) -> Result<(), Error> {
+    fn jack_send(&mut self, jack_id: usize, data: &AudioPacket) -> Result<(), Error> {
         self.interface.jack_send(jack_id, data.as_bytes())
     }
 
@@ -443,30 +467,22 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         }
     }
 
-    pub fn set_input_patch_enabled(&mut self, jack_id: usize, status: bool) -> Result<(), Error> {
-        if jack_id >= I {
-            Err(Error::InvalidJackId)
+    pub fn set_input_patch_enabled(&mut self, jack_id: InputJackHandle, status: bool) -> Result<(), Error> {
+        if status {
+            self.input_patch_enabled |= 1 << jack_id.0;
         } else {
-            if status {
-                self.input_patch_enabled |= 1 << jack_id;
-            } else {
-                self.input_patch_enabled &= !(1 << jack_id);
-            }
-            self.update_patch_state()
+            self.input_patch_enabled &= !(1 << jack_id.0);
         }
+        self.update_patch_state()
     }
 
-    pub fn set_output_patch_enabled(&mut self, jack_id: usize, status: bool) -> Result<(), Error> {
-        if jack_id >= O {
-            Err(Error::InvalidJackId)
+    pub fn set_output_patch_enabled(&mut self, jack_id: OutputJackHandle, status: bool) -> Result<(), Error> {
+        if status {
+            self.output_patch_enabled |= 1 << jack_id.0;
         } else {
-            if status {
-                self.output_patch_enabled |= 1 << jack_id;
-            } else {
-                self.output_patch_enabled &= !(1 << jack_id);
-            }
-            self.update_patch_state()
+            self.output_patch_enabled &= !(1 << jack_id.0);
         }
+        self.update_patch_state()
     }
 
     fn update_patch_state(&mut self) -> Result<(), Error> {
@@ -516,6 +532,42 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             Ok(_) => self.input_colors[jack_id] = output.color,
             Err(e) => info!("Jack connection error: {:?}", e),
         }
+    }
+}
+
+pub struct ProcessBlock<const I: usize, const O: usize> {
+    input: [AudioPacket; I],
+    output: [AudioPacket; O],
+}
+
+impl<const I: usize, const O: usize> ProcessBlock<I, O> {
+    pub fn get_input(&self, handle: InputJackHandle) -> &AudioPacket {
+        &self.input[handle.0]
+    }
+
+    pub fn set_output(&mut self, handle: OutputJackHandle, data: AudioPacket) {
+        self.output[handle.0] = data;
+    }
+}
+
+impl<const I: usize, const O: usize> Default for ProcessBlock<I, O> {
+    fn default() -> Self {
+        Self { input: [Default::default(); I], output: [Default::default(); O] }
+    }
+}
+
+pub struct PollUpdate<const I: usize, const O: usize> {
+    input_colors: [Srgb<u8>; I],
+    output_colors: [Srgb<u8>; O],
+}
+
+impl<const I: usize, const O: usize> PollUpdate<I, O> {
+    pub fn get_input_color(&self, handle: InputJackHandle) -> Srgb<u8> {
+        self.input_colors[handle.0]
+    }
+
+    pub fn get_output_color(&self, handle: OutputJackHandle) -> Srgb<u8> {
+        self.output_colors[handle.0]
     }
 }
 

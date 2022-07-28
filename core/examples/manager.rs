@@ -86,7 +86,7 @@ fn main() {
 
         'outer: loop {
             while time < start.elapsed().as_millis() as i64 {
-                module.poll(time, |_, _| {}).unwrap();
+                module.poll(time, |_| {}).unwrap();
                 match rx.try_recv() {
                     Ok(true) => module.send_halt(),
                     Ok(false) => {}

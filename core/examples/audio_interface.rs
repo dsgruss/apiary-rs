@@ -77,12 +77,12 @@ impl AudioInterface {
         for d in host.output_devices()? {
             info!("{:?}", d.name()?);
         }
-        // for d in host.output_devices()? {
-        //     if d.name()?.contains("CABLE") {
-        //         found_device = Some(d);
-        //         break;
-        //     }
-        // }
+        for d in host.output_devices()? {
+            if d.name()?.contains("CABLE") {
+                found_device = Some(d);
+                break;
+            }
+        }
         let device = match found_device {
             Some(d) => d,
             None => host.default_output_device().ok_or(io::Error::new(
@@ -136,7 +136,7 @@ impl AudioInterface {
 impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for AudioInterface {
     fn process(
         &mut self,
-        input: &[AudioPacket; NUM_INPUTS],
+        input: [&AudioPacket; NUM_INPUTS],
         _output: &mut [AudioPacket; NUM_OUTPUTS],
         _params: &[f32; NUM_PARAMS],
     ) {

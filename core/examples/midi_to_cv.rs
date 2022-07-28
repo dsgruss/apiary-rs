@@ -92,7 +92,7 @@ impl MidiToCv {
 impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for MidiToCv {
     fn process(
         &mut self,
-        _input: &[AudioPacket; NUM_INPUTS],
+        _input: [&AudioPacket; NUM_INPUTS],
         output: &mut [AudioPacket; NUM_OUTPUTS],
         _params: &[f32; NUM_PARAMS],
     ) {

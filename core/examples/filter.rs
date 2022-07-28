@@ -40,7 +40,7 @@ impl Filter {
 impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Filter {
     fn process(
         &mut self,
-        input: &[AudioPacket; NUM_INPUTS],
+        input: [&AudioPacket; NUM_INPUTS],
         output: &mut [AudioPacket; NUM_OUTPUTS],
         params: &[f32; NUM_PARAMS],
     ) {
