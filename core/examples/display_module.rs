@@ -4,9 +4,10 @@ use eframe::egui;
 use palette::Srgb;
 use rand::Rng;
 use std::{
+    iter::zip,
     sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender, TryRecvError, TrySendError},
     thread,
-    time::{Duration, Instant}, iter::zip,
+    time::{Duration, Instant},
 };
 
 use crate::common::{Jack, Knob, SelectedInterface};
@@ -247,8 +248,10 @@ fn process<const I: usize, const O: usize, const P: usize, T: Processor<I, O, P>
                     }
                 })
                 .unwrap();
-            let colors = (input_handles.map(|h| res.get_input_color(h)),
-        output_handles.map(|h| res.get_output_color(h)));
+            let colors = (
+                input_handles.map(|h| res.get_input_color(h)),
+                output_handles.map(|h| res.get_output_color(h)),
+            );
             if let Err(TrySendError::Disconnected(_)) = tx.try_send(colors) {
                 break 'outer;
             }

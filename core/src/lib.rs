@@ -260,7 +260,8 @@ pub trait Network<const I: usize, const O: usize> {
     /// Output bytes on the directive multicast
     fn send_directive(&mut self, buf: &[u8]) -> Result<(), Error>;
     /// Connect an input jack to an output endpoint
-    fn jack_connect(&mut self, input_jack_id: usize, addr: [u8; 4], time: i64) -> Result<(), Error>;
+    fn jack_connect(&mut self, input_jack_id: usize, addr: [u8; 4], time: i64)
+        -> Result<(), Error>;
     /// Get audio data for a particular jack
     fn jack_recv(&mut self, input_jack_id: usize, buf: &mut [u8]) -> Result<usize, Error>;
     /// Send audio data for a particular jack
@@ -407,8 +408,14 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             PatchState::Blocked => Srgb::new(255, 0, 0),
         };
         match self.patch_state {
-            PatchState::Idle => Ok(PollUpdate{ input_colors, output_colors }),
-            _ => Ok(PollUpdate { input_colors: [color; I], output_colors: [color; O] }),
+            PatchState::Idle => Ok(PollUpdate {
+                input_colors,
+                output_colors,
+            }),
+            _ => Ok(PollUpdate {
+                input_colors: [color; I],
+                output_colors: [color; O],
+            }),
         }
     }
 
@@ -467,7 +474,11 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         }
     }
 
-    pub fn set_input_patch_enabled(&mut self, jack_id: InputJackHandle, status: bool) -> Result<(), Error> {
+    pub fn set_input_patch_enabled(
+        &mut self,
+        jack_id: InputJackHandle,
+        status: bool,
+    ) -> Result<(), Error> {
         if status {
             self.input_patch_enabled |= 1 << jack_id.0;
         } else {
@@ -476,7 +487,11 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         self.update_patch_state()
     }
 
-    pub fn set_output_patch_enabled(&mut self, jack_id: OutputJackHandle, status: bool) -> Result<(), Error> {
+    pub fn set_output_patch_enabled(
+        &mut self,
+        jack_id: OutputJackHandle,
+        status: bool,
+    ) -> Result<(), Error> {
         if status {
             self.output_patch_enabled |= 1 << jack_id.0;
         } else {
@@ -552,7 +567,10 @@ impl<const I: usize, const O: usize> ProcessBlock<I, O> {
 
 impl<const I: usize, const O: usize> Default for ProcessBlock<I, O> {
     fn default() -> Self {
-        Self { input: [Default::default(); I], output: [Default::default(); O] }
+        Self {
+            input: [Default::default(); I],
+            output: [Default::default(); O],
+        }
     }
 }
 

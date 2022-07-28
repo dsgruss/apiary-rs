@@ -190,8 +190,8 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
             return Err(Error::InvalidJackId);
         }
         if let Some(old_addr) = self.input_groups[jack_id] {
-                self.input_sockets[jack_id].leave_multicast_v4(&old_addr, &self.local_addr)?;
-                self.input_groups[jack_id] = None;
+            self.input_sockets[jack_id].leave_multicast_v4(&old_addr, &self.local_addr)?;
+            self.input_groups[jack_id] = None;
         }
         Ok(())
     }
