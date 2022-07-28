@@ -277,12 +277,7 @@ where
         let address = Ipv4Address::from_bytes(&addr);
         let t = Instant::from_millis(time);
         let ep = IpEndpoint::new(IpAddress::Ipv4(address), JACK_PORT);
-        if let Some(old_ep) = self.input_jack_endpoints[jack_id] {
-            if let Err(_) = self.iface.leave_multicast_group(old_ep.addr, t) {
-                return Err(Error::Network);
-            }
-            info!("Input jack {}: Leaving group", jack_id);
-        }
+        self.jack_disconnect(jack_id, time)?;
         info!(
             "Input jack {}: Joining group {:?} and opening socket",
             jack_id, ep
@@ -294,9 +289,6 @@ where
         let jack_socket = self
             .iface
             .get_socket::<UdpSocket>(self.input_jack_handles[jack_id]);
-        if jack_socket.is_open() {
-            jack_socket.close();
-        }
         jack_socket.bind(ep).or(Err(Error::Network))
     }
 
@@ -335,5 +327,22 @@ where
             .as_bytes()
             .try_into()
             .or(Err(Error::InvalidJackId))
+    }
+
+    fn jack_disconnect(&mut self, jack_id: usize, time: i64) -> Result<(), Error> {
+        let t = Instant::from_millis(time);
+        if let Some(old_ep) = self.input_jack_endpoints[jack_id] {
+            if let Err(_) = self.iface.leave_multicast_group(old_ep.addr, t) {
+                return Err(Error::Network);
+            }
+            info!("Input jack {}: Leaving group", jack_id);
+        }
+        let jack_socket = self
+            .iface
+            .get_socket::<UdpSocket>(self.input_jack_handles[jack_id]);
+        if jack_socket.is_open() {
+            jack_socket.close();
+        }
+        Ok(())
     }
 }

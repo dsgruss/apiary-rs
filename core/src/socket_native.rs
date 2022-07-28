@@ -137,16 +137,11 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
         }
     }
 
-    fn jack_connect(&mut self, jack_id: usize, addr: [u8; 4], _time: i64) -> Result<(), Error> {
+    fn jack_connect(&mut self, jack_id: usize, addr: [u8; 4], time: i64) -> Result<(), Error> {
         if jack_id >= self.input_sockets.len() {
             return Err(Error::InvalidJackId);
         }
-        match self.input_groups[jack_id] {
-            Some(old_addr) => {
-                self.input_sockets[jack_id].leave_multicast_v4(&old_addr, &self.local_addr)?;
-            }
-            None => {}
-        }
+        self.jack_disconnect(jack_id, time)?;
         let address = addr.into();
         self.input_sockets[jack_id].join_multicast_v4(&address, &self.local_addr)?;
         self.input_groups[jack_id] = Some(address);
@@ -188,5 +183,16 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
             return Err(Error::InvalidJackId);
         }
         Ok(self.output_eps[jack_id].ip().octets())
+    }
+
+    fn jack_disconnect(&mut self, jack_id: usize, _time: i64) -> Result<(), Error> {
+        if jack_id >= self.input_sockets.len() {
+            return Err(Error::InvalidJackId);
+        }
+        if let Some(old_addr) = self.input_groups[jack_id] {
+                self.input_sockets[jack_id].leave_multicast_v4(&old_addr, &self.local_addr)?;
+                self.input_groups[jack_id] = None;
+        }
+        Ok(())
     }
 }

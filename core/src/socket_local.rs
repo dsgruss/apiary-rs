@@ -140,4 +140,14 @@ impl<const I: usize, const O: usize> Network<I, O> for LocalInterface<I, O> {
             None => Err(Error::InvalidJackId),
         }
     }
+
+    fn jack_disconnect(&mut self, jack_id: usize, _time: i64) -> Result<(), Error> {
+        match self.rx_jacks.get_mut(jack_id) {
+            Some(v) => {
+                *v = None;
+                Ok(())
+            }
+            None => Err(Error::InvalidJackId),
+        }
+    }
 }

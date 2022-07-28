@@ -253,13 +253,15 @@ pub trait Network<const I: usize, const O: usize> {
     /// Output bytes on the directive multicast
     fn send_directive(&mut self, buf: &[u8]) -> Result<(), Error>;
     /// Connect an input jack to an output endpoint
-    fn jack_connect(&mut self, jack_id: usize, addr: [u8; 4], time: i64) -> Result<(), Error>;
+    fn jack_connect(&mut self, input_jack_id: usize, addr: [u8; 4], time: i64) -> Result<(), Error>;
     /// Get audio data for a particular jack
-    fn jack_recv(&mut self, jack_id: usize, buf: &mut [u8]) -> Result<usize, Error>;
+    fn jack_recv(&mut self, input_jack_id: usize, buf: &mut [u8]) -> Result<usize, Error>;
     /// Send audio data for a particular jack
-    fn jack_send(&mut self, jack_id: usize, buf: &[u8]) -> Result<(), Error>;
+    fn jack_send(&mut self, output_jack_id: usize, buf: &[u8]) -> Result<(), Error>;
     /// Get multicast address for a particular jack
-    fn jack_addr(&mut self, jack_id: usize) -> Result<[u8; 4], Error>;
+    fn jack_addr(&mut self, output_jack_id: usize) -> Result<[u8; 4], Error>;
+    /// Disconnect an input jack
+    fn jack_disconnect(&mut self, input_jack_id: usize, time: i64) -> Result<(), Error>;
 }
 
 /// Module communication and state handling.
