@@ -4,10 +4,8 @@ use std::f32::consts::PI;
 use crate::display_module::{DisplayModule, Processor};
 
 pub struct Oscillator {
-    phase: [f32; CHANNELS],
-    time: i64,
+    osc: [NaiveOscillator; CHANNELS],
     level: f32,
-    level_input: [f32; CHANNELS],
 }
 
 const LEVEL_PARAM: usize = 0;
@@ -37,11 +35,40 @@ impl Oscillator {
             .output(SAW_OUTPUT, "Saw")
             .output(SQR_OUTPUT, "Sqr")
             .start(Oscillator {
-                phase: [0.0; CHANNELS],
-                time: 0,
-                level: 1.0,
-                level_input: [0.0; CHANNELS],
+                osc: [Default::default(); CHANNELS],
+                level: 0.0,
             })
+    }
+}
+
+#[derive(Copy, Clone, Default)]
+struct NaiveOscillator {
+    level: f32,
+    phase: f32,
+}
+
+impl NaiveOscillator {
+    fn process(&mut self, note: i16, level: i16, prange: f32, plevel: f32) -> (i16, i16, i16, i16) {
+        self.level += 0.01 * (level as f32 - self.level);
+
+        let a = self.level * plevel;
+
+        let sin = (a * (2.0 * PI * self.phase).sin()).round() as i16;
+        let tri = if self.phase < 0.5 {
+            a * (-1.0 + 4.0 * self.phase)
+        } else {
+            a * (1.0 - 4.0 * self.phase)
+        }
+        .round() as i16;
+        let saw = (-a + 2.0 * a * self.phase).round() as i16;
+        let sqr = if self.phase < 0.5 { a } else { -a }.round() as i16;
+
+        self.phase += voct_to_frequency(note as f32 + prange * 512.0) / SAMPLE_RATE;
+        while self.phase > 1.0 {
+            self.phase -= 1.0;
+        }
+
+        (sin, tri, saw, sqr)
     }
 }
 
@@ -55,28 +82,17 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Oscillator {
         for i in 0..BLOCK_SIZE {
             self.level += 0.0025 * (params[LEVEL_PARAM] - self.level);
             for j in 0..CHANNELS {
-                self.level_input[j] +=
-                    0.01 * (input[LEVEL_INPUT].data[i].data[j] as f32 - self.level_input[j]);
-                let a = self.level_input[j] * self.level;
-                output[SIN_OUTPUT].data[i].data[j] =
-                    (a * (2.0 * PI * self.phase[j]).sin()).round() as i16;
-                output[TRI_OUTPUT].data[i].data[j] = if self.phase[j] < 0.5 {
-                    -a + 4.0 * a * self.phase[j]
-                } else {
-                    a - 4.0 * a * (self.phase[j] - 0.5)
-                }
-                .round() as i16;
-                output[SAW_OUTPUT].data[i].data[j] = (-a + 2.0 * a * self.phase[j]).round() as i16;
-                output[SQR_OUTPUT].data[i].data[j] =
-                    if self.phase[j] < 0.5 { a } else { -a }.round() as i16;
-                self.phase[j] += voct_to_frequency(
-                    input[IN_INPUT].data[i].data[j] as f32 + params[RANGE_PARAM] * 512.0,
-                ) / SAMPLE_RATE;
-                while self.phase[j] > 1.0 {
-                    self.phase[j] -= 1.0;
-                }
+                let (sin, tri, saw, sqr) = self.osc[j].process(
+                    input[IN_INPUT].data[i].data[j],
+                    input[LEVEL_INPUT].data[i].data[j],
+                    params[RANGE_PARAM],
+                    self.level,
+                );
+                output[SIN_OUTPUT].data[i].data[j] = sin;
+                output[TRI_OUTPUT].data[i].data[j] = tri;
+                output[SAW_OUTPUT].data[i].data[j] = saw;
+                output[SQR_OUTPUT].data[i].data[j] = sqr;
             }
         }
-        self.time += 1
     }
 }
