@@ -1,5 +1,5 @@
 use apiary_core::{voct_to_frequency, AudioPacket, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
-use std::f32::consts::PI;
+use std::{f32::consts::PI, cmp::min};
 
 use crate::display_module::{DisplayModule, Processor};
 
@@ -108,11 +108,13 @@ impl HarmOscillator {
         self.level += 0.01 * (level as f32 - self.level);
 
         let a = self.level * plevel;
+        let freq = voct_to_frequency(note as f32 + prange * 512.0);
         let sin = a * (2.0 * PI * self.phase).sin();
         let mut tri = 0.0;
         let mut saw = 0.5;
         let mut sqr = 0.0;
-        for i in 1..100 {
+        let nend = min((SAMPLE_RATE / (2.0 * freq)).floor() as u32, 100);
+        for i in 1..nend {
             let n = i as f32;
             if i % 2 != 0 {
                 if ((i - 1) / 2) % 2 == 0 {
@@ -125,7 +127,7 @@ impl HarmOscillator {
             saw -= a / (PI * n) * (n * 2.0 * PI * self.phase).sin();
         }
 
-        self.phase += voct_to_frequency(note as f32 + prange * 512.0) / SAMPLE_RATE;
+        self.phase += freq / SAMPLE_RATE;
         while self.phase > 1.0 {
             self.phase -= 1.0;
         }
