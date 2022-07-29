@@ -4,7 +4,7 @@ use std::f32::consts::PI;
 use crate::display_module::{DisplayModule, Processor};
 
 pub struct Oscillator {
-    osc: [NaiveOscillator; CHANNELS],
+    osc: [HarmOscillator; CHANNELS],
     level: f32,
 }
 
@@ -41,6 +41,31 @@ impl Oscillator {
     }
 }
 
+impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Oscillator {
+    fn process(
+        &mut self,
+        input: [&AudioPacket; NUM_INPUTS],
+        output: &mut [AudioPacket; NUM_OUTPUTS],
+        params: &[f32; NUM_PARAMS],
+    ) {
+        for i in 0..BLOCK_SIZE {
+            self.level += 0.0025 * (params[LEVEL_PARAM] - self.level);
+            for j in 0..CHANNELS {
+                let (sin, tri, saw, sqr) = self.osc[j].process(
+                    input[IN_INPUT].data[i].data[j],
+                    input[LEVEL_INPUT].data[i].data[j],
+                    params[RANGE_PARAM],
+                    self.level,
+                );
+                output[SIN_OUTPUT].data[i].data[j] = sin;
+                output[TRI_OUTPUT].data[i].data[j] = tri;
+                output[SAW_OUTPUT].data[i].data[j] = saw;
+                output[SQR_OUTPUT].data[i].data[j] = sqr;
+            }
+        }
+    }
+}
+
 #[derive(Copy, Clone, Default)]
 struct NaiveOscillator {
     level: f32,
@@ -72,27 +97,44 @@ impl NaiveOscillator {
     }
 }
 
-impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Oscillator {
-    fn process(
-        &mut self,
-        input: [&AudioPacket; NUM_INPUTS],
-        output: &mut [AudioPacket; NUM_OUTPUTS],
-        params: &[f32; NUM_PARAMS],
-    ) {
-        for i in 0..BLOCK_SIZE {
-            self.level += 0.0025 * (params[LEVEL_PARAM] - self.level);
-            for j in 0..CHANNELS {
-                let (sin, tri, saw, sqr) = self.osc[j].process(
-                    input[IN_INPUT].data[i].data[j],
-                    input[LEVEL_INPUT].data[i].data[j],
-                    params[RANGE_PARAM],
-                    self.level,
-                );
-                output[SIN_OUTPUT].data[i].data[j] = sin;
-                output[TRI_OUTPUT].data[i].data[j] = tri;
-                output[SAW_OUTPUT].data[i].data[j] = saw;
-                output[SQR_OUTPUT].data[i].data[j] = sqr;
+#[derive(Copy, Clone, Default)]
+struct HarmOscillator {
+    level: f32,
+    phase: f32,
+}
+
+impl HarmOscillator {
+    fn process(&mut self, note: i16, level: i16, prange: f32, plevel: f32) -> (i16, i16, i16, i16) {
+        self.level += 0.01 * (level as f32 - self.level);
+
+        let a = self.level * plevel;
+        let sin = a * (2.0 * PI * self.phase).sin();
+        let mut tri = 0.0;
+        let mut saw = 0.5;
+        let mut sqr = 0.0;
+        for i in 1..100 {
+            let n = i as f32;
+            if i % 2 != 0 {
+                if ((i - 1) / 2) % 2 == 0 {
+                    tri += a * 8.0 / (PI * PI * n * n) * (n * 2.0 * PI * self.phase).sin();
+                } else {
+                    tri -= a * 8.0 / (PI * PI * n * n) * (n * 2.0 * PI * self.phase).sin();
+                }
+                sqr += a * 4.0 / (PI * n) * (n * 2.0 * PI * self.phase).sin();
             }
+            saw -= a / (PI * n) * (n * 2.0 * PI * self.phase).sin();
         }
+
+        self.phase += voct_to_frequency(note as f32 + prange * 512.0) / SAMPLE_RATE;
+        while self.phase > 1.0 {
+            self.phase -= 1.0;
+        }
+
+        (
+            sin.round() as i16,
+            tri.round() as i16,
+            saw.round() as i16,
+            sqr.round() as i16,
+        )
     }
 }
