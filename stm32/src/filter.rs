@@ -1,5 +1,7 @@
-use stm32f4xx_hal::{gpio, gpio::Output};
-// use timer::{PwmChannel, Instance, self};
+use stm32f4xx_hal::{
+    gpio,
+    gpio::{Output},
+};
 
 pub struct Switch<const P: char, const N: u8> {
     pin: gpio::Pin<P, N>,
@@ -57,25 +59,6 @@ impl<const P: char, const N: u8> Led<P, N> {
         self.led_state = !self.led_state;
     }
 }
-
-// pub struct RgbLed<R: timer::Instance, G: timer::Instance, B: timer::Instance> {
-//     r: R,
-//     g: G,
-//     b: B,
-// }
-
-//     pub struct RgbLed<RTIM, const R: u8, GTIM, const G: u8, BTIM, const B: u8> {
-//         r: PwmChannel<RTIM, R>,
-//         g: PwmChannel<GTIM, G>,
-//         b: PwmChannel<BTIM, B>,
-//     }
-
-// impl<RTIM, const R: u8, GTIM, const G: u8, BTIM, const B: u8> RgbLed<RTIM, R, GTIM, G, BTIM, B>
-// where RTIM: timer::Instance, {
-//     pub fn set_on(&mut self) {
-//         self.r.set_duty(self.r.get_max_duty());
-//     }
-// }
 
 pub struct UiPins {
     pub input: gpio::Pin<'C', 8>,

@@ -14,6 +14,7 @@ panic-semihosting = "0.6.0"
 # panic-itm = "0.4"
 nb = "1"
 stm32f4xx-hal = { version = "0.13", features = ["stm32f429"] }
+embedded-hal = "0.2.7"
 
 fugit = "0.3"
 log = { version = "0.4.6", features = ["release_max_level_info"] }

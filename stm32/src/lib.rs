@@ -1,5 +1,6 @@
 #![no_std]
 
+use palette::Srgb;
 use panic_semihosting as _;
 // use panic_itm as _;
 // use panic_halt as _;
@@ -11,11 +12,11 @@ use stm32f4xx_hal::{
         Adc,
     },
     dma::{config, traits::StreamISR, MemoryToPeripheral, Stream3, StreamsTuple, Transfer},
-    gpio::GpioExt,
+    gpio::{GpioExt, NoPin},
     pac::{self, interrupt, CorePeripherals, Peripherals, DMA1, USART3},
     prelude::*,
     rcc::RccExt,
-    serial::{config::DmaConfig, Config, Tx},
+    serial::{config::DmaConfig, Config, Tx}, spi::Spi,
 };
 
 use core::fmt::{Debug, Write};
@@ -83,8 +84,11 @@ use apiary_core::{
     Module, Uuid, CHANNELS,
 };
 
-mod filter;
+pub mod filter;
 use filter::{Ui, UiPins};
+
+pub mod apa102;
+use apa102::Apa102;
 
 const NUM_INPUTS: usize = 3;
 const NUM_OUTPUTS: usize = 1;
@@ -143,50 +147,13 @@ pub fn start() -> ! {
     let uuid = Uuid::from("hardware:filter:0");
     let rand_source = p.RNG.constrain(&clocks);
 
-    // TIM2 CH1 : PA15 Red
-    // TIM2 CH2 : PB3 Blue
-    // TIM3 CH1 : PB4 Green
+    let sck = gpioc.pc10.into_alternate();
+    let miso = NoPin;
+    let mosi = gpioc.pc12.into_alternate();
 
-    // TIM4 CH4 : PB9 Red
-    // TIM8 CH1 : PC6 Blue
-    // TIM3 CH2 : PC7 Green
-
-    let (mut output_red, mut output_blue) = p
-        .TIM2
-        .pwm_hz(
-            (gpioa.pa15.into_alternate(), gpiob.pb3.into_alternate()),
-            1.kHz(),
-            &clocks,
-        )
-        .split();
-    let (mut output_green, mut input_green) = p
-        .TIM3
-        .pwm_hz(
-            (gpiob.pb4.into_alternate(), gpioc.pc7.into_alternate()),
-            1.kHz(),
-            &clocks,
-        )
-        .split();
-    let mut input_red = p
-        .TIM4
-        .pwm_hz(gpiob.pb9.into_alternate(), 1.kHz(), &clocks)
-        .split();
-    let mut input_blue = p
-        .TIM8
-        .pwm_hz(gpioc.pc6.into_alternate(), 1.kHz(), &clocks)
-        .split();
-    output_red.set_duty(output_red.get_max_duty());
-    output_green.set_duty(output_green.get_max_duty() * 0);
-    output_blue.set_duty(output_blue.get_max_duty() * 0);
-    output_red.enable();
-    output_blue.enable();
-    output_green.enable();
-    input_red.set_duty(input_red.get_max_duty());
-    input_green.set_duty(input_green.get_max_duty() * 0);
-    input_blue.set_duty(input_blue.get_max_duty() * 0);
-    input_red.enable();
-    input_blue.enable();
-    input_green.enable();
+    let spi = Spi::new(p.SPI3, (sck, miso, mosi), apa102::MODE, 32.MHz(), &clocks);
+    let mut apa = Apa102::new(spi).pixel_order(apa102::PixelOrder::RBG);
+    let mut light_data: [Srgb<u8>; NUM_INPUTS + NUM_OUTPUTS] = [Srgb::new(255, 255, 255); NUM_INPUTS + NUM_OUTPUTS];
 
     let ui_pins = UiPins {
         input: gpioc.pc8,
@@ -372,31 +339,17 @@ pub fn start() -> ! {
             curr_stats.process.toc(cycle_timer.now());
         }) {
             Ok(update) => {
-                let input_color = update.get_input_color(jack_input);
-                let output_color = update.get_output_color(jack_output);
-                input_red.set_duty(
-                    (input_red.get_max_duty() as u32 * (255 - input_color.red as u32) / 256) as u16,
-                );
-                input_green.set_duty(
-                    (input_green.get_max_duty() as u32 * (255 - input_color.green as u32) / 256)
-                        as u16,
-                );
-                input_blue.set_duty(
-                    (input_blue.get_max_duty() as u32 * (255 - input_color.blue as u32) / 256)
-                        as u16,
-                );
-                output_red.set_duty(
-                    (output_red.get_max_duty() as u32 * (255 - output_color.red as u32) / 256)
-                        as u16,
-                );
-                output_green.set_duty(
-                    (output_green.get_max_duty() as u32 * (255 - output_color.green as u32) / 256)
-                        as u16,
-                );
-                output_blue.set_duty(
-                    (output_blue.get_max_duty() as u32 * (255 - output_color.blue as u32) / 256)
-                        as u16,
-                );
+                light_data[0] = update.get_input_color(jack_key_track);
+                light_data[1] = update.get_input_color(jack_contour);
+                light_data[2] = update.get_input_color(jack_input);
+                light_data[3] = update.get_output_color(jack_output);
+                // let active = (time / 100) % 4;
+                // for i in 0..4 {
+                //     light_data[i] = Srgb::new(0, 0, 0);
+                // }
+                // light_data[active as usize] = Srgb::new(255, 255, 255);
+                apa.set_intensity(8);
+                apa.write(light_data.iter().cloned()).unwrap();
             }
             Err(e) => info!("Data send error: {:?}", e),
         }
