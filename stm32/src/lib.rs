@@ -16,7 +16,8 @@ use stm32f4xx_hal::{
     pac::{self, interrupt, CorePeripherals, Peripherals, DMA1, USART3},
     prelude::*,
     rcc::RccExt,
-    serial::{config::DmaConfig, Config, Tx}, spi::Spi,
+    serial::{config::DmaConfig, Config, Tx},
+    spi::Spi,
 };
 
 use core::fmt::{Debug, Write};
@@ -153,7 +154,8 @@ pub fn start() -> ! {
 
     let spi = Spi::new(p.SPI3, (sck, miso, mosi), apa102::MODE, 32.MHz(), &clocks);
     let mut apa = Apa102::new(spi).pixel_order(apa102::PixelOrder::RBG);
-    let mut light_data: [Srgb<u8>; NUM_INPUTS + NUM_OUTPUTS] = [Srgb::new(255, 255, 255); NUM_INPUTS + NUM_OUTPUTS];
+    let mut light_data: [Srgb<u8>; NUM_INPUTS + NUM_OUTPUTS] =
+        [Srgb::new(255, 255, 255); NUM_INPUTS + NUM_OUTPUTS];
 
     let ui_pins = UiPins {
         input: gpioc.pc8,

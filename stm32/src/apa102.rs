@@ -81,7 +81,8 @@ where
 
     /// Write all the items of an iterator to an apa102 strip
     pub fn write<T>(&mut self, iterator: T) -> Result<(), E>
-    where T: Iterator<Item = Srgb<u8>>
+    where
+        T: Iterator<Item = Srgb<u8>>,
     {
         self.spi.write(&[0x00, 0x00, 0x00, 0x00])?;
         let glob = self.global_intensity;

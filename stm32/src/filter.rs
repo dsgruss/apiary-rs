@@ -1,7 +1,4 @@
-use stm32f4xx_hal::{
-    gpio,
-    gpio::{Output},
-};
+use stm32f4xx_hal::{gpio, gpio::Output};
 
 pub struct Switch<const P: char, const N: u8> {
     pin: gpio::Pin<P, N>,
