@@ -1,8 +1,8 @@
 use core::iter::zip;
 
 use apiary_core::{
-    dsp::LinearTrap, softclip, voct_to_freq_scale, AudioPacket, InputJackHandle, Module, Network,
-    OutputJackHandle, PollUpdate, ProcessBlock, CHANNELS,
+    dsp::filters::LinearTrap, softclip, voct_to_freq_scale, AudioPacket, InputJackHandle, Module,
+    Network, OutputJackHandle, PollUpdate, ProcessBlock, CHANNELS,
 };
 use itertools::izip;
 use libm::{log10f, powf};
