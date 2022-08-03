@@ -257,7 +257,7 @@ fn process<const I: usize, const O: usize, const P: usize, T: Processor<I, O, P>
             }
             time += 1;
         }
-        thread::sleep(Duration::from_millis(0));
+        thread::yield_now();
     }
 }
 
