@@ -19,33 +19,25 @@ use stm32f4xx_hal::{
     spi::Spi,
 };
 
-use core::iter::zip;
 use core::{fmt::Debug, fmt::Write, hash::Hash};
 use fugit::RateExtU32;
-use itertools::izip;
-use libm::{log10f, powf};
-use palette::Srgb;
 
 use stm32_eth::{EthPins, RingEntry};
 
 #[macro_use]
 extern crate log;
 
-use apiary_core::{
-    dsp::LinearTrap, socket_smoltcp::SmoltcpInterface, softclip, voct_to_freq_scale, AudioPacket,
-    Module, Uuid, CHANNELS,
-};
+use apiary_core::{socket_smoltcp::SmoltcpInterface, Module, Uuid};
 
-pub mod filter;
-use filter::{Ui, UiPins};
+mod filter;
+use filter as engine;
+use filter::{Filter, FilterPins};
 
 pub mod apa102;
 use apa102::Apa102;
 
 mod serial_logger;
-
-const NUM_INPUTS: usize = 3;
-const NUM_OUTPUTS: usize = 1;
+mod ui;
 
 pub fn start() -> ! {
     let p = Peripherals::take().unwrap();
@@ -76,16 +68,7 @@ pub fn start() -> ! {
 
     let spi = Spi::new(p.SPI3, (sck, miso, mosi), apa102::MODE, 32.MHz(), &clocks);
     let mut apa = Apa102::new(spi).pixel_order(apa102::PixelOrder::RBG);
-    let mut light_data: [Srgb<u8>; NUM_INPUTS + NUM_OUTPUTS] =
-        [Srgb::new(255, 255, 255); NUM_INPUTS + NUM_OUTPUTS];
-
-    let ui_pins = UiPins {
-        input: gpioc.pc8,
-        key_track: gpioc.pc9,
-        contour: gpiod.pd12,
-        output: gpiod.pd13,
-    };
-    let mut ui = Ui::new(ui_pins);
+    apa.set_intensity(8);
 
     info!("Enabling ethernet...");
     let eth_pins = EthPins {
@@ -126,38 +109,41 @@ pub fn start() -> ! {
     info!("Setting mac address to: {:?}", mac);
 
     let mut uuid = Uuid::default();
-    write!(uuid, "hardware:filter:{:#08x}", val).unwrap();
+    write!(uuid, "hardware:{}:{:#08x}", engine::NAME, val).unwrap();
 
     let mut storage = Default::default();
-    let mut module: Module<_, _, NUM_INPUTS, NUM_OUTPUTS> = Module::new(
-        SmoltcpInterface::<_, NUM_INPUTS, NUM_OUTPUTS, { NUM_INPUTS + NUM_OUTPUTS + 1 }>::new(
-            &mut eth_dma,
-            mac,
-            &mut storage,
-        ),
+    let mut module: Module<_, _, { engine::NUM_INPUTS }, { engine::NUM_OUTPUTS }> = Module::new(
+        SmoltcpInterface::<
+            _,
+            { engine::NUM_INPUTS },
+            { engine::NUM_OUTPUTS },
+            { engine::NUM_INPUTS + engine::NUM_OUTPUTS + 1 },
+        >::new(&mut eth_dma, mac, &mut storage),
         rand_source,
         uuid.clone(),
-        220,
+        engine::COLOR,
         0,
     );
 
-    let jack_input = module.add_input_jack().unwrap();
-    let jack_key_track = module.add_input_jack().unwrap();
-    let jack_contour = module.add_input_jack().unwrap();
-
-    let jack_output = module.add_output_jack().unwrap();
+    let filter_pins = FilterPins {
+        input: gpioc.pc8,
+        key_track: gpioc.pc9,
+        contour: gpiod.pd12,
+        output: gpiod.pd13,
+    };
+    let mut en = Filter::new(filter_pins, &mut module);
 
     info!("Sockets created");
 
     // ADC3 GPIO Configuration
-    // PF3     ------> ADC3_IN9
-    // PF4     ------> ADC3_IN14
-    // PF5     ------> ADC3_IN15
-    // PF7     ------> ADC3_IN5
-    // PF8     ------> ADC3_IN6
-    // PF9     ------> ADC3_IN7
+    // PA0/WKUP ------> ADC3_IN0
+    // PF7      ------> ADC3_IN5
+    // PF8      ------> ADC3_IN6
+    // PF9      ------> ADC3_IN7
     // PF10     ------> ADC3_IN8
-    // PA0/WKUP     ------> ADC3_IN0
+    // PF3      ------> ADC3_IN9
+    // PF4      ------> ADC3_IN14
+    // PF5      ------> ADC3_IN15
 
     let adc_config = AdcConfig::default()
         .dma(Dma::Continuous)
@@ -169,27 +155,17 @@ pub fn start() -> ! {
         .memory_increment(true);
 
     let mut adc = Adc::adc3(p.ADC3, true, adc_config);
-    adc.configure_channel(
-        &gpioa.pa0.into_analog(),
-        Sequence::One,
-        SampleTime::Cycles_480,
-    );
-    adc.configure_channel(
-        &gpiof.pf7.into_analog(),
-        Sequence::Two,
-        SampleTime::Cycles_480,
-    );
-    adc.configure_channel(
-        &gpiof.pf8.into_analog(),
-        Sequence::Three,
-        SampleTime::Cycles_480,
-    );
-    adc.configure_channel(
-        &gpiof.pf9.into_analog(),
-        Sequence::Four,
-        SampleTime::Cycles_480,
-    );
-    let init_adc_buffer = cortex_m::singleton!(: [u16; 4] = [0; 4]).unwrap();
+    let st = SampleTime::Cycles_480;
+    adc.configure_channel(&gpioa.pa0.into_analog(), Sequence::One, st);
+    adc.configure_channel(&gpiof.pf7.into_analog(), Sequence::Two, st);
+    adc.configure_channel(&gpiof.pf8.into_analog(), Sequence::Three, st);
+    adc.configure_channel(&gpiof.pf9.into_analog(), Sequence::Four, st);
+    adc.configure_channel(&gpiof.pf10.into_analog(), Sequence::Five, st);
+    adc.configure_channel(&gpiof.pf3.into_analog(), Sequence::Six, st);
+    adc.configure_channel(&gpiof.pf4.into_analog(), Sequence::Seven, st);
+    adc.configure_channel(&gpiof.pf5.into_analog(), Sequence::Eight, st);
+
+    let init_adc_buffer = cortex_m::singleton!(: [u16; 8] = [0; 8]).unwrap();
     let mut adc_transfer = Transfer::init_peripheral_to_memory(
         StreamsTuple::new(p.DMA2).0,
         adc,
@@ -197,11 +173,10 @@ pub fn start() -> ! {
         None,
         adc_dma_config,
     );
+
     adc_transfer.start(|adc| adc.start_conversion());
-    let mut adc_buffer = cortex_m::singleton!(: [u16; 4] = [0; 4]).unwrap();
+    let mut adc_buffer = cortex_m::singleton!(: [u16; 8] = [0; 8]).unwrap();
     adc_buffer = adc_transfer.next_transfer(adc_buffer).unwrap().0;
-    let mut params: [f32; 3] = [0.0; 3];
-    let mut filters: [LinearTrap; CHANNELS] = Default::default();
     info!("ADC current sample: {:?}", adc_buffer);
 
     info!("Starting main loop");
@@ -228,64 +203,17 @@ pub fn start() -> ! {
         time += 1;
 
         curr_stats.ui.tic(cycle_timer.now());
-        let res = ui.poll();
-        if res.changed {
-            module
-                .set_input_patch_enabled(jack_input, res.input_pressed)
-                .unwrap();
-            module
-                .set_input_patch_enabled(jack_key_track, res.key_track_pressed)
-                .unwrap();
-            module
-                .set_input_patch_enabled(jack_contour, res.contour_pressed)
-                .unwrap();
-            module
-                .set_output_patch_enabled(jack_output, res.output_pressed)
-                .unwrap();
-        }
+        en.poll_ui(&mut module);
         curr_stats.ui.toc(cycle_timer.now());
 
         curr_stats.poll.tic(cycle_timer.now());
         match module.poll(time, |block| {
             curr_stats.process.tic(cycle_timer.now());
-            // Processing time is too slow to do this every audio frame...
-            for i in 0..CHANNELS {
-                filters[i].set_params(
-                    params[0]
-                        * voct_to_freq_scale(
-                            block.get_input(jack_key_track).data[0].data[i] as f32
-                                + block.get_input(jack_contour).data[0].data[i] as f32
-                                    / i16::MAX as f32
-                                    * params[2]
-                                    * 512.0
-                                    * 12.0
-                                    * 4.0,
-                        ),
-                    params[1],
-                );
-            }
-            let mut output: AudioPacket = Default::default();
-            for (fin, fout) in zip(block.get_input(jack_input).data, output.data.iter_mut()) {
-                for (iin, iout, filter) in izip!(fin.data, fout.data.iter_mut(), filters.iter_mut())
-                {
-                    *iout = (softclip(filter.process(iin as f32 / i16::MAX as f32))
-                        * i16::MAX as f32) as i16;
-                }
-            }
-            block.set_output(jack_output, output);
+            en.process(block);
             curr_stats.process.toc(cycle_timer.now());
         }) {
             Ok(update) => {
-                light_data[0] = update.get_input_color(jack_key_track);
-                light_data[1] = update.get_input_color(jack_contour);
-                light_data[2] = update.get_input_color(jack_input);
-                light_data[3] = update.get_output_color(jack_output);
-                // let active = (time / 100) % 4;
-                // for i in 0..4 {
-                //     light_data[i] = Srgb::new(0, 0, 0);
-                // }
-                // light_data[active as usize] = Srgb::new(255, 255, 255);
-                apa.set_intensity(8);
+                let light_data = en.get_light_data(update);
                 apa.write(light_data.iter().cloned()).unwrap();
             }
             Err(e) => info!("Data send error: {:?}", e),
@@ -295,29 +223,12 @@ pub fn start() -> ! {
         curr_stats.adc.tic(cycle_timer.now());
         adc_transfer.start(|adc| adc.start_conversion());
         adc_buffer = adc_transfer.next_transfer(adc_buffer).unwrap().0;
-        params[0] += 0.01
-            * (20.0
-                * powf(
-                    10.0,
-                    (adc_buffer[0] as f32 / 4096.0) * log10f(8000.0 / 20.0),
-                )
-                - params[0]);
-        params[1] = powf(adc_buffer[1] as f32 / 4096.0, 2.0) * 10.0;
-        params[2] = adc_buffer[2] as f32 / 4096.0;
+        en.set_params(adc_buffer);
         curr_stats.adc.toc(cycle_timer.now());
 
         if time % 1000 == 0 {
             info!("total, max (us): {:?}", last_stats);
-            info!("ADC current sample: {:?}, Params: {:?}", adc_buffer, params);
-            /*
-            info!(
-                "Election status: {:?}:{}:{}, leader is {:?}",
-                leader_election.role,
-                leader_election.current_term,
-                leader_election.iteration,
-                leader_election.voted_for
-            );
-            */
+            info!("ADC current sample: {:?}", adc_buffer);
             last_stats = curr_stats;
             curr_stats = Default::default();
         }
