@@ -15,11 +15,12 @@ use stm32f4xx_hal::{
     pac::{CorePeripherals, Peripherals},
     prelude::*,
     rcc::RccExt,
-    spi::Spi, signature::Uid,
+    signature::Uid,
+    spi::Spi,
 };
 
-use core::{fmt::Debug, fmt::Write, hash::{Hash}};
 use core::iter::zip;
+use core::{fmt::Debug, fmt::Write, hash::Hash};
 use fugit::RateExtU32;
 use itertools::izip;
 use libm::{log10f, powf};
