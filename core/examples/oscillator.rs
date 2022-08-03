@@ -1,5 +1,5 @@
 use apiary_core::{voct_to_frequency, AudioPacket, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
-use rustfft::{num_complex::Complex, FftPlanner};
+use zerocopy::{AsBytes, FromBytes};
 use std::{cmp::min, f32::consts::PI};
 
 use crate::display_module::{DisplayModule, Processor};
@@ -150,91 +150,29 @@ struct WtOscillator {
     phase: f32,
 }
 
-fn generate_wavetable(input: [f32; 2048]) -> [[f32; 2048]; 9] {
-    let mut result = [[0.0; 2048]; 9];
-    let mut wt = vec![
-        Complex {
-            re: 0.0_f32,
-            im: 0.0_f32
-        };
-        2048
-    ];
-    for (i, x) in input.iter().enumerate() {
-        wt[i].re = *x;
-    }
-
-    let mut planner = FftPlanner::<f32>::new();
-    let fft = planner.plan_fft_forward(2048);
-    fft.process(&mut wt);
-    for (v, i) in wt.iter().enumerate() {
-        info!("{:?} {:?}", v, i);
-    }
-
-    planner = FftPlanner::<f32>::new();
-    let rfft = planner.plan_fft_inverse(2048);
-    for j in 0..9 {
-        let mut wt_bl = vec![
-            Complex {
-                re: 0.0_f32,
-                im: 0.0_f32
-            };
-            2048
-        ];
-        let mut harmonics = 0;
-        for (i, iwt) in wt.iter().enumerate() {
-            let idx = 2_usize.pow(j) * i;
-            if idx > 368 {
-                info!("WT{:?}: {:?} harmonics", j, harmonics);
-                break;
-            }
-            wt_bl[i] = *iwt;
-            harmonics += 1;
-        }
-        rfft.process(&mut wt_bl);
-        for (i, v) in wt_bl.iter().enumerate() {
-            if j == 8 {
-                info!("{:?} {:?}", i, v);
-            }
-            result[j as usize][i] = v.re / 2048.0;
-        }
-    }
-    result
-}
-
 lazy_static! {
     static ref WTSIN: [[f32; 2048]; 9] = {
-        let mut sin = [0.0; 2048];
-        for i in 0..2048 {
-            sin[i] = (i as f32 * 2.0 * PI / 2048.0).sin();
-        }
-        generate_wavetable(sin)
+        let bytes = include_bytes!("../wt/sin.in");
+        Wavetable::read_from(&bytes[..]).unwrap().vals
     };
     static ref WTTRI: [[f32; 2048]; 9] = {
-        let mut tri = [0.0; 2048];
-        for i in 0..2048 {
-            let phase = i as f32 / 2048.0;
-            tri[i] = if phase < 0.5 {
-                -1.0 + 4.0 * phase
-            } else {
-                1.0 - 4.0 * (phase - 0.5)
-            };
-        }
-        generate_wavetable(tri)
+        let bytes = include_bytes!("../wt/tri.in");
+        Wavetable::read_from(&bytes[..]).unwrap().vals
     };
     static ref WTSAW: [[f32; 2048]; 9] = {
-        let mut saw = [0.0; 2048];
-        for i in 0..2048 {
-            saw[i] = -1.0 + 2.0 * (i as f32) / 2048.0;
-        }
-        generate_wavetable(saw)
+        let bytes = include_bytes!("../wt/saw.in");
+        Wavetable::read_from(&bytes[..]).unwrap().vals
     };
     static ref WTSQR: [[f32; 2048]; 9] = {
-        let mut sqr = [0.0; 2048];
-        for i in 0..2048 {
-            sqr[i] = if i < 1024 { -1.0 } else { 1.0 };
-        }
-        generate_wavetable(sqr)
+        let bytes = include_bytes!("../wt/sqr.in");
+        Wavetable::read_from(&bytes[..]).unwrap().vals
     };
+}
+
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
+#[repr(C)]
+struct Wavetable {
+    vals: [[f32; 2048]; 9],
 }
 
 impl Default for WtOscillator {
