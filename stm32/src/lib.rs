@@ -1,5 +1,6 @@
 #![no_std]
 
+use hash32::{FnvHasher, Hasher};
 use panic_semihosting as _;
 // use panic_itm as _;
 // use panic_halt as _;
@@ -14,10 +15,10 @@ use stm32f4xx_hal::{
     pac::{CorePeripherals, Peripherals},
     prelude::*,
     rcc::RccExt,
-    spi::Spi,
+    spi::Spi, signature::Uid,
 };
 
-use core::fmt::Debug;
+use core::{fmt::Debug, fmt::Write, hash::{Hash}};
 use core::iter::zip;
 use fugit::RateExtU32;
 use itertools::izip;
@@ -66,7 +67,6 @@ pub fn start() -> ! {
 
     serial_logger::init(gpiod.pd8, p.USART3, p.DMA1, &clocks);
 
-    let uuid = Uuid::from("hardware:filter:0");
     let rand_source = p.RNG.constrain(&clocks);
 
     let sck = gpioc.pc10.into_alternate();
@@ -115,10 +115,23 @@ pub fn start() -> ! {
     cycle_timer.start(2.secs()).unwrap();
     nb::block!(cycle_timer.wait()).unwrap();
 
+    // Derive the mac address and module id from the unique device id
+    let mut s = FnvHasher::default();
+    Uid::get().hash(&mut s);
+    let val = s.finish32();
+    let bval = val.to_ne_bytes();
+    let mac = [0x00, 0x00, bval[0], bval[1], bval[2], bval[3]];
+
+    info!("Setting mac address to: {:?}", mac);
+
+    let mut uuid = Uuid::default();
+    write!(uuid, "hardware:filter:{:#08x}", val).unwrap();
+
     let mut storage = Default::default();
     let mut module: Module<_, _, NUM_INPUTS, NUM_OUTPUTS> = Module::new(
         SmoltcpInterface::<_, NUM_INPUTS, NUM_OUTPUTS, { NUM_INPUTS + NUM_OUTPUTS + 1 }>::new(
             &mut eth_dma,
+            mac,
             &mut storage,
         ),
         rand_source,
