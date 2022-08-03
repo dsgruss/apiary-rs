@@ -28,7 +28,6 @@ pub mod socket_smoltcp;
 #[cfg(feature = "network-local")]
 pub mod socket_local;
 
-#[cfg(feature = "network-local")]
 #[macro_use]
 extern crate lazy_static;
 

@@ -7,9 +7,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[macro_use]
-extern crate lazy_static;
-
 mod audio_interface;
 mod common;
 mod display_module;

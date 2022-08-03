@@ -1,4 +1,4 @@
-use apiary_core::{dsp::LinearTrap, voct_to_freq_scale, AudioPacket, BLOCK_SIZE, CHANNELS};
+use apiary_core::{dsp::filters::LinearTrap, voct_to_freq_scale, AudioPacket, BLOCK_SIZE, CHANNELS};
 use rand::Rng;
 
 use crate::display_module::{DisplayModule, Processor};
