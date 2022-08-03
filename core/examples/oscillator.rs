@@ -1,6 +1,6 @@
 use apiary_core::{voct_to_frequency, AudioPacket, BLOCK_SIZE, CHANNELS, SAMPLE_RATE};
-use rustfft::{FftPlanner, num_complex::Complex};
-use std::{f32::consts::PI, cmp::min};
+use rustfft::{num_complex::Complex, FftPlanner};
+use std::{cmp::min, f32::consts::PI};
 
 use crate::display_module::{DisplayModule, Processor};
 
@@ -152,7 +152,13 @@ struct WtOscillator {
 
 fn generate_wavetable(input: [f32; 2048]) -> [[f32; 2048]; 9] {
     let mut result = [[0.0; 2048]; 9];
-    let mut wt = vec![Complex { re: 0.0_f32, im: 0.0_f32 }; 2048];
+    let mut wt = vec![
+        Complex {
+            re: 0.0_f32,
+            im: 0.0_f32
+        };
+        2048
+    ];
     for (i, x) in input.iter().enumerate() {
         wt[i].re = *x;
     }
@@ -167,7 +173,13 @@ fn generate_wavetable(input: [f32; 2048]) -> [[f32; 2048]; 9] {
     planner = FftPlanner::<f32>::new();
     let rfft = planner.plan_fft_inverse(2048);
     for j in 0..9 {
-        let mut wt_bl = vec![Complex { re: 0.0_f32, im: 0.0_f32 }; 2048];
+        let mut wt_bl = vec![
+            Complex {
+                re: 0.0_f32,
+                im: 0.0_f32
+            };
+            2048
+        ];
         let mut harmonics = 0;
         for (i, iwt) in wt.iter().enumerate() {
             let idx = 2_usize.pow(j) * i;
@@ -267,6 +279,11 @@ impl WtOscillator {
         while self.phase >= 1.0 {
             self.phase -= 1.0;
         }
-        (sin.round() as i16, tri.round() as i16, saw.round() as i16, sqr.round() as i16)
+        (
+            sin.round() as i16,
+            tri.round() as i16,
+            saw.round() as i16,
+            sqr.round() as i16,
+        )
     }
 }
