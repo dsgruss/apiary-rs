@@ -15,6 +15,7 @@ enum MidiMessage {
 struct Voice {
     note: u8,
     on: bool,
+    vel: u8,
     timestamp: i64,
 }
 
@@ -44,8 +45,9 @@ const NUM_INPUTS: usize = 0;
 
 const NOTE_OUTPUT: usize = 0;
 const GATE_OUTPUT: usize = 1;
-const MDWH_OUTPUT: usize = 2;
-const NUM_OUTPUTS: usize = 3;
+const VEL_OUTPUT: usize = 2;
+const MDWH_OUTPUT: usize = 3;
+const NUM_OUTPUTS: usize = 4;
 
 impl MidiToCv {
     pub fn init() -> DisplayModule<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> {
@@ -79,6 +81,7 @@ impl MidiToCv {
             .name("Midi to CV")
             .output(NOTE_OUTPUT, "Note")
             .output(GATE_OUTPUT, "Gate")
+            .output(VEL_OUTPUT, "Velocity")
             .output(MDWH_OUTPUT, "Mod Wheel")
             .start(MidiToCv {
                 voices: Default::default(),
@@ -106,7 +109,7 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for MidiToCv {
                             v.timestamp = self.time;
                         }
                     }
-                    MidiMessage::NoteOn(_, note, _) => {
+                    MidiMessage::NoteOn(_, note, vel) => {
                         // First, see if we can take the oldest voice that has been
                         // released. Otherwise, steal a voice. In this case, take the
                         // oldest note played. We also have a choice of whether to just
@@ -116,6 +119,7 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for MidiToCv {
                         {
                             v.note = note;
                             v.on = true;
+                            v.vel = vel;
                             v.timestamp = self.time;
                         }
                     }
@@ -130,17 +134,22 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for MidiToCv {
         }
         let mut note_frame: AudioFrame = Default::default();
         let mut gate_frame: AudioFrame = Default::default();
+        let mut vel_frame: AudioFrame = Default::default();
         for i in 0..CHANNELS {
             note_frame.data[i] = midi_note_to_voct(self.voices[i].note);
             if self.voices[i].on {
                 gate_frame.data[i] = 16000;
             }
+            vel_frame.data[i] = (self.voices[i].vel as i16) << 7;
         }
         output[NOTE_OUTPUT] = AudioPacket {
             data: [note_frame; BLOCK_SIZE],
         };
         output[GATE_OUTPUT] = AudioPacket {
             data: [gate_frame; BLOCK_SIZE],
+        };
+        output[VEL_OUTPUT] = AudioPacket {
+            data: [vel_frame; BLOCK_SIZE],
         };
         self.time += 1;
     }
