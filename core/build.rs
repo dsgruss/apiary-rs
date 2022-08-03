@@ -1,10 +1,10 @@
 //! This build script creates the wavetable files during compile time, since they end up being a
 //! chunk of static memory embedded in the executable.
 
+use rustfft::{num_complex::Complex, FftPlanner};
 use std::f32::consts::PI;
 use std::fs::File;
 use std::io::Write;
-use rustfft::{num_complex::Complex, FftPlanner};
 use zerocopy::{AsBytes, FromBytes};
 
 #[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
@@ -15,7 +15,9 @@ struct Wavetable {
 
 impl Default for Wavetable {
     fn default() -> Self {
-        Wavetable { vals: [[0.0; 2048]; 9] }
+        Wavetable {
+            vals: [[0.0; 2048]; 9],
+        }
     }
 }
 
@@ -62,33 +64,44 @@ fn generate_wavetable(input: [f32; 2048]) -> Wavetable {
 }
 
 fn main() {
-        let mut sin = [0.0; 2048];
-        for i in 0..2048 {
-            sin[i] = (i as f32 * 2.0 * PI / 2048.0).sin();
-        }
-        File::create("wt/sin.in").unwrap().write_all(generate_wavetable(sin).as_bytes()).unwrap();
+    let mut sin = [0.0; 2048];
+    for i in 0..2048 {
+        sin[i] = (i as f32 * 2.0 * PI / 2048.0).sin();
+    }
+    File::create("wt/sin.in")
+        .unwrap()
+        .write_all(generate_wavetable(sin).as_bytes())
+        .unwrap();
 
-        let mut tri = [0.0; 2048];
-        for i in 0..2048 {
-            let phase = i as f32 / 2048.0;
-            tri[i] = if phase < 0.5 {
-                -1.0 + 4.0 * phase
-            } else {
-                1.0 - 4.0 * (phase - 0.5)
-            };
-        }
-        File::create("wt/tri.in").unwrap().write_all(generate_wavetable(tri).as_bytes()).unwrap();
+    let mut tri = [0.0; 2048];
+    for i in 0..2048 {
+        let phase = i as f32 / 2048.0;
+        tri[i] = if phase < 0.5 {
+            -1.0 + 4.0 * phase
+        } else {
+            1.0 - 4.0 * (phase - 0.5)
+        };
+    }
+    File::create("wt/tri.in")
+        .unwrap()
+        .write_all(generate_wavetable(tri).as_bytes())
+        .unwrap();
 
-        let mut saw = [0.0; 2048];
-        for i in 0..2048 {
-            saw[i] = -1.0 + 2.0 * (i as f32) / 2048.0;
-        }
-        File::create("wt/saw.in").unwrap().write_all(generate_wavetable(saw).as_bytes()).unwrap();
+    let mut saw = [0.0; 2048];
+    for i in 0..2048 {
+        saw[i] = -1.0 + 2.0 * (i as f32) / 2048.0;
+    }
+    File::create("wt/saw.in")
+        .unwrap()
+        .write_all(generate_wavetable(saw).as_bytes())
+        .unwrap();
 
-        let mut sqr = [0.0; 2048];
-        for i in 0..2048 {
-            sqr[i] = if i < 1024 { -1.0 } else { 1.0 };
-        }
-        File::create("wt/sqr.in").unwrap().write_all(generate_wavetable(sqr).as_bytes()).unwrap();
+    let mut sqr = [0.0; 2048];
+    for i in 0..2048 {
+        sqr[i] = if i < 1024 { -1.0 } else { 1.0 };
+    }
+    File::create("wt/sqr.in")
+        .unwrap()
+        .write_all(generate_wavetable(sqr).as_bytes())
+        .unwrap();
 }
-

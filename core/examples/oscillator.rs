@@ -1,4 +1,4 @@
-use apiary_core::{AudioPacket, BLOCK_SIZE, CHANNELS, dsp::oscillators::WtOscillator};
+use apiary_core::{dsp::oscillators::WtOscillator, AudioPacket, BLOCK_SIZE, CHANNELS};
 
 use crate::display_module::{DisplayModule, Processor};
 

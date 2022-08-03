@@ -1,6 +1,6 @@
-use core::{f32::consts::PI, cmp::min};
+use core::{cmp::min, f32::consts::PI};
 
-use libm::{sinf, roundf, floorf, ceilf};
+use libm::{ceilf, floorf, roundf, sinf};
 use zerocopy::{AsBytes, FromBytes};
 
 use crate::{voct_to_frequency, SAMPLE_RATE};
@@ -12,7 +12,13 @@ pub struct NaiveOscillator {
 }
 
 impl NaiveOscillator {
-    pub fn process(&mut self, note: i16, level: i16, prange: f32, plevel: f32) -> (i16, i16, i16, i16) {
+    pub fn process(
+        &mut self,
+        note: i16,
+        level: i16,
+        prange: f32,
+        plevel: f32,
+    ) -> (i16, i16, i16, i16) {
         self.level += 0.01 * (level as f32 - self.level);
 
         let a = self.level * plevel;
@@ -22,8 +28,7 @@ impl NaiveOscillator {
             a * (-1.0 + 4.0 * self.phase)
         } else {
             a * (1.0 - 4.0 * (self.phase - 0.5))
-        }
-     ) as i16;
+        }) as i16;
         let saw = roundf(-a + 2.0 * a * self.phase) as i16;
         let sqr = roundf(if self.phase < 0.5 { a } else { -a }) as i16;
 
@@ -43,7 +48,13 @@ pub struct HarmOscillator {
 }
 
 impl HarmOscillator {
-    pub fn process(&mut self, note: i16, level: i16, prange: f32, plevel: f32) -> (i16, i16, i16, i16) {
+    pub fn process(
+        &mut self,
+        note: i16,
+        level: i16,
+        prange: f32,
+        plevel: f32,
+    ) -> (i16, i16, i16, i16) {
         self.level += 0.01 * (level as f32 - self.level);
 
         let a = self.level * plevel;
@@ -123,7 +134,13 @@ impl Default for WtOscillator {
 }
 
 impl WtOscillator {
-    pub fn process(&mut self, note: i16, level: i16, prange: f32, plevel: f32) -> (i16, i16, i16, i16) {
+    pub fn process(
+        &mut self,
+        note: i16,
+        level: i16,
+        prange: f32,
+        plevel: f32,
+    ) -> (i16, i16, i16, i16) {
         self.level += 0.01 * (level as f32 - self.level);
 
         let a = self.level * plevel;

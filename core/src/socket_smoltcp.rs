@@ -81,7 +81,11 @@ impl<'a, DeviceT, const I: usize, const O: usize, const N: usize>
 where
     DeviceT: for<'d> Device<'d>,
 {
-    pub fn new(device: DeviceT, src_mac: [u8; 6], storage: &'a mut SmoltcpStorage<'a, I, O, N>) -> Self {
+    pub fn new(
+        device: DeviceT,
+        src_mac: [u8; 6],
+        storage: &'a mut SmoltcpStorage<'a, I, O, N>,
+    ) -> Self {
         let neighbor_cache = NeighborCache::new(&mut storage.neighbor_storage[..]);
         let routes = Routes::new(&mut storage.routes_storage[..]);
         let ethernet_addr = EthernetAddress(src_mac);
