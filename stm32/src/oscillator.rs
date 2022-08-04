@@ -1,6 +1,6 @@
 use apiary_core::{
     dsp::oscillators::WtOscillator, AudioPacket, InputJackHandle, Module, Network,
-    OutputJackHandle, PollUpdate, ProcessBlock, CHANNELS,
+    OutputJackHandle, PollUpdate, ProcessBlock, CHANNELS, voct_to_frequency_table,
 };
 use itertools::izip;
 use palette::Srgb;
@@ -102,32 +102,38 @@ impl Oscillator {
         let mut tri_out = AudioPacket::default();
         let mut saw_out = AudioPacket::default();
         let mut sqr_out = AudioPacket::default();
-        for (din, dsin, dtri, dsaw, dsqr) in izip!(
-            block.get_input(self.jack_input).data,
+        let a = 16000.0;
+        // voct_to_frequency_table(din.data[0]);
+        let freq_start = block.get_input(self.jack_input).data[0].data.map(|x| voct_to_frequency_table(x));
+        for (dsin, dtri, dsaw, dsqr) in izip!(
             sin_out.data.iter_mut(),
             tri_out.data.iter_mut(),
             saw_out.data.iter_mut(),
             sqr_out.data.iter_mut()
         ) {
-            for (cin, csin, ctri, csaw, csqr, osc) in izip!(
-                din.data,
+            for (freq, csin, ctri, csaw, csqr, osc) in izip!(
+                freq_start,
                 dsin.data.iter_mut(),
                 dtri.data.iter_mut(),
                 dsaw.data.iter_mut(),
                 dsqr.data.iter_mut(),
                 self.osc.iter_mut()
             ) {
-                let (sin, tri, saw, sqr) = osc.process(cin, 16000, 0.0, 0.5);
+                let (sin, tri, saw, sqr) = osc.process_approx(a, freq);
                 *csin = sin;
                 *ctri = tri;
                 *csaw = saw;
                 *csqr = sqr;
             }
         }
-        block.set_output(self.jack_sin, sin_out);
-        block.set_output(self.jack_tri, tri_out);
-        block.set_output(self.jack_saw, saw_out);
-        block.set_output(self.jack_sqr, sqr_out);
+        // *block.get_mut_output(self.jack_sin) = sin_out;
+        // *block.get_mut_output(self.jack_tri) = tri_out;
+        *block.get_mut_output(self.jack_saw) = saw_out;
+        *block.get_mut_output(self.jack_sqr) = sqr_out;
+        // block.set_output(self.jack_sin, sin_out);
+        // block.set_output(self.jack_tri, tri_out);
+        // block.set_output(self.jack_saw, saw_out);
+        // block.set_output(self.jack_sqr, sqr_out);
     }
 
     pub fn set_params(&mut self, adc: &mut [u16; 8]) {}

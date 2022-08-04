@@ -3,7 +3,7 @@ use core::{cmp::min, f32::consts::PI, mem};
 use libm::{ceilf, floorf, roundf, sinf};
 use zerocopy::{AsBytes, FromBytes};
 
-use crate::{voct_to_frequency, voct_to_frequency_table, SAMPLE_RATE};
+use crate::{voct_to_frequency, voct_to_frequency_table, SAMPLE_RATE, CHANNELS};
 
 #[derive(Copy, Clone, Default)]
 pub struct NaiveOscillator {
@@ -173,9 +173,7 @@ impl WtOscillator {
         )
     }
 
-    pub fn process_approx(&mut self, note: i16) -> (i16, i16, i16, i16) {
-        let a = 16000.0;
-        let freq = voct_to_frequency_table(note);
+    pub fn process_approx(&mut self, amp: f32, freq: f32) -> (i16, i16, i16, i16) {
 
         let idx = match freq as u16 {
             f if f < 40 => 0,
@@ -191,10 +189,12 @@ impl WtOscillator {
         };
 
         let cen = self.phase as usize;
-        let sin = a * ((WTSIN).vals[idx][cen]);
-        let tri = a * ((WTTRI).vals[idx][cen]);
-        let saw = a * ((WTSAW).vals[idx][cen]);
-        let sqr = a * ((WTSQR).vals[idx][cen]);
+        // let sin = amp * ((WTSIN).vals[idx][cen]);
+        let sin = 0;
+        // let tri = amp * ((WTTRI).vals[idx][cen]);
+        let tri = 0;
+        let saw = amp * ((WTSAW).vals[idx][cen]);
+        let sqr = amp * ((WTSQR).vals[idx][cen]);
 
         self.phase += freq / SAMPLE_RATE * 2048.0;
         while self.phase >= 2048.0 {
