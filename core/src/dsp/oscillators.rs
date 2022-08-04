@@ -3,7 +3,7 @@ use core::{cmp::min, f32::consts::PI, mem};
 use libm::{ceilf, floorf, roundf, sinf};
 use zerocopy::{AsBytes, FromBytes};
 
-use crate::{voct_to_frequency, SAMPLE_RATE, voct_to_frequency_table};
+use crate::{voct_to_frequency, voct_to_frequency_table, SAMPLE_RATE};
 
 #[derive(Copy, Clone, Default)]
 pub struct NaiveOscillator {
@@ -102,10 +102,14 @@ pub struct WtOscillator {
 // Safety: I'm not sure how to do this so that the precalculated arrays are loaded into static flash
 // memory, rather than ram as is the case with lazy_static.
 
-static WTSIN: Wavetable = unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/sin.in")) };
-static WTTRI: Wavetable = unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/tri.in")) };
-static WTSAW: Wavetable = unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/saw.in")) };
-static WTSQR: Wavetable = unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/sqr.in")) };
+static WTSIN: Wavetable =
+    unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/sin.in")) };
+static WTTRI: Wavetable =
+    unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/tri.in")) };
+static WTSAW: Wavetable =
+    unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/saw.in")) };
+static WTSQR: Wavetable =
+    unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/sqr.in")) };
 
 #[derive(AsBytes, FromBytes, Debug)]
 #[repr(C)]
@@ -130,7 +134,6 @@ impl WtOscillator {
         prange: f32,
         plevel: f32,
     ) -> (i16, i16, i16, i16) {
-
         self.level += 0.01 * (level as f32 - self.level);
 
         let a = self.level * plevel;
@@ -171,7 +174,6 @@ impl WtOscillator {
     }
 
     pub fn process_approx(&mut self, note: i16) -> (i16, i16, i16, i16) {
-
         let a = 16000.0;
         let freq = voct_to_frequency_table(note);
 
@@ -198,11 +200,6 @@ impl WtOscillator {
         while self.phase >= 2048.0 {
             self.phase -= 2048.0;
         }
-        (
-            sin as i16,
-            tri as i16,
-            saw as i16,
-            sqr as i16,
-        )
+        (sin as i16, tri as i16, saw as i16, sqr as i16)
     }
 }
