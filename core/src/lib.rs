@@ -71,6 +71,20 @@ pub fn voct_to_freq_scale(v_oct: f32) -> f32 {
     powf(2.0, (v_oct) / (512.0 * 12.0))
 }
 
+lazy_static! {
+    static ref FREQ_SCALE: [f32; 128] = {
+        let mut result = [0.0; 128];
+        for i in 0..128 {
+            result[i] = voct_to_frequency(midi_note_to_voct(i as u8) as f32);
+        }
+        result
+    };
+}
+
+pub fn voct_to_frequency_table(v_oct: i16) -> f32 {
+    FREQ_SCALE[((v_oct >> 9) + 64) as usize]
+}
+
 pub fn softclip(x: f32) -> f32 {
     let y = if x < -3.0 {
         -3.0
@@ -385,7 +399,9 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             f(&mut block);
             for i in 0..O {
                 let buf = block.output[i];
-                self.jack_send(i, &buf).unwrap();
+                if self.jack_send(i, &buf).is_err() {
+                    loop {}
+                };
                 let avg = block.output[i].avg();
                 let c: Srgb =
                     Hsv::new(self.color as f32, 1.0, avg * 16.0 / i16::MAX as f32).into_color();
