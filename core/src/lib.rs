@@ -353,7 +353,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
     {
         let mut input_colors: [Srgb<u8>; I] = [Default::default(); I];
         let mut output_colors: [Srgb<u8>; O] = [Default::default(); O];
-        let mut block: ProcessBlock<I, O> = Default::default();
+        let mut block = ProcessBlock::<I, O>::new([Default::default(); I], [Default::default(); O]);
         self.interface.poll(time)?;
         if self.can_send() {
             if let Ok(d) = self.recv_directive() {
@@ -571,6 +571,10 @@ pub struct ProcessBlock<const I: usize, const O: usize> {
 }
 
 impl<const I: usize, const O: usize> ProcessBlock<I, O> {
+    pub fn new(input: [AudioPacket; I], output: [AudioPacket; O]) -> Self {
+        ProcessBlock { input, output }
+    }
+
     pub fn get_input(&self, handle: InputJackHandle) -> &AudioPacket {
         &self.input[handle.0]
     }
@@ -578,14 +582,9 @@ impl<const I: usize, const O: usize> ProcessBlock<I, O> {
     pub fn set_output(&mut self, handle: OutputJackHandle, data: AudioPacket) {
         self.output[handle.0] = data;
     }
-}
 
-impl<const I: usize, const O: usize> Default for ProcessBlock<I, O> {
-    fn default() -> Self {
-        Self {
-            input: [Default::default(); I],
-            output: [Default::default(); O],
-        }
+    pub fn get_mut_output(&mut self, handle: OutputJackHandle) -> &mut AudioPacket {
+        &mut self.output[handle.0]
     }
 }
 
