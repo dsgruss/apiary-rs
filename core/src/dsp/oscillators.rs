@@ -1,9 +1,9 @@
-use core::{cmp::min, f32::consts::PI};
+use core::{cmp::min, f32::consts::PI, mem};
 
 use libm::{ceilf, floorf, roundf, sinf};
 use zerocopy::{AsBytes, FromBytes};
 
-use crate::{voct_to_frequency, SAMPLE_RATE};
+use crate::{voct_to_frequency, SAMPLE_RATE, voct_to_frequency_table};
 
 #[derive(Copy, Clone, Default)]
 pub struct NaiveOscillator {
@@ -99,26 +99,15 @@ pub struct WtOscillator {
     phase: f32,
 }
 
-lazy_static! {
-    static ref WTSIN: [[f32; 2048]; 9] = {
-        let bytes = include_bytes!("../../wt/sin.in");
-        Wavetable::read_from(&bytes[..]).unwrap().vals
-    };
-    static ref WTTRI: [[f32; 2048]; 9] = {
-        let bytes = include_bytes!("../../wt/tri.in");
-        Wavetable::read_from(&bytes[..]).unwrap().vals
-    };
-    static ref WTSAW: [[f32; 2048]; 9] = {
-        let bytes = include_bytes!("../../wt/saw.in");
-        Wavetable::read_from(&bytes[..]).unwrap().vals
-    };
-    static ref WTSQR: [[f32; 2048]; 9] = {
-        let bytes = include_bytes!("../../wt/sqr.in");
-        Wavetable::read_from(&bytes[..]).unwrap().vals
-    };
-}
+// Safety: I'm not sure how to do this so that the precalculated arrays are loaded into static flash
+// memory, rather than ram as is the case with lazy_static.
 
-#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
+static WTSIN: Wavetable = unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/sin.in")) };
+static WTTRI: Wavetable = unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/tri.in")) };
+static WTSAW: Wavetable = unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/saw.in")) };
+static WTSQR: Wavetable = unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/sqr.in")) };
+
+#[derive(AsBytes, FromBytes, Debug)]
 #[repr(C)]
 struct Wavetable {
     vals: [[f32; 2048]; 9],
@@ -141,6 +130,7 @@ impl WtOscillator {
         prange: f32,
         plevel: f32,
     ) -> (i16, i16, i16, i16) {
+
         self.level += 0.01 * (level as f32 - self.level);
 
         let a = self.level * plevel;
@@ -163,10 +153,10 @@ impl WtOscillator {
         let right = ceilf(self.phase * 2048.0) as usize % 2048;
         let frac = (self.phase * 2048.0) - floorf(self.phase * 2048.0);
 
-        let sin = a * ((*WTSIN)[idx][left] * (1.0 - frac) + (*WTSIN)[idx][right] * frac);
-        let tri = a * ((*WTTRI)[idx][left] * (1.0 - frac) + (*WTTRI)[idx][right] * frac);
-        let saw = a * ((*WTSAW)[idx][left] * (1.0 - frac) + (*WTSAW)[idx][right] * frac);
-        let sqr = a * ((*WTSQR)[idx][left] * (1.0 - frac) + (*WTSQR)[idx][right] * frac);
+        let sin = a * ((WTSIN).vals[idx][left] * (1.0 - frac) + (WTSIN).vals[idx][right] * frac);
+        let tri = a * ((WTTRI).vals[idx][left] * (1.0 - frac) + (WTTRI).vals[idx][right] * frac);
+        let saw = a * ((WTSAW).vals[idx][left] * (1.0 - frac) + (WTSAW).vals[idx][right] * frac);
+        let sqr = a * ((WTSQR).vals[idx][left] * (1.0 - frac) + (WTSQR).vals[idx][right] * frac);
 
         self.phase += freq / SAMPLE_RATE;
         while self.phase >= 1.0 {
@@ -177,6 +167,42 @@ impl WtOscillator {
             roundf(tri) as i16,
             roundf(saw) as i16,
             roundf(sqr) as i16,
+        )
+    }
+
+    pub fn process_approx(&mut self, note: i16) -> (i16, i16, i16, i16) {
+
+        let a = 16000.0;
+        let freq = voct_to_frequency_table(note);
+
+        let idx = match freq as u16 {
+            f if f < 40 => 0,
+            f if f < 80 => 0,
+            f if f < 160 => 1,
+            f if f < 320 => 2,
+            f if f < 640 => 3,
+            f if f < 1280 => 4,
+            f if f < 2560 => 5,
+            f if f < 5120 => 6,
+            f if f < 10240 => 7,
+            _ => 8,
+        };
+
+        let cen = self.phase as usize;
+        let sin = a * ((WTSIN).vals[idx][cen]);
+        let tri = a * ((WTTRI).vals[idx][cen]);
+        let saw = a * ((WTSAW).vals[idx][cen]);
+        let sqr = a * ((WTSQR).vals[idx][cen]);
+
+        self.phase += freq / SAMPLE_RATE * 2048.0;
+        while self.phase >= 2048.0 {
+            self.phase -= 2048.0;
+        }
+        (
+            sin as i16,
+            tri as i16,
+            saw as i16,
+            sqr as i16,
         )
     }
 }
