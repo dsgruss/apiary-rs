@@ -32,7 +32,7 @@ pub struct SmoltcpStorage<'a, const I: usize, const O: usize, const N: usize> {
     server_rx_metadata_buffer: [UdpPacketMetadata; 32],
     server_rx_payload_buffer: [u8; 2048],
     server_tx_metadata_buffer: [UdpPacketMetadata; 32],
-    server_tx_payload_buffer: [u8; 2048],
+    server_tx_payload_buffer: [u8; 4096],
     jack_rx_metadata_buffers: [[UdpPacketMetadata; 16]; I],
     jack_rx_payload_buffers: [[u8; 4096]; I],
     jack_tx_metadata_buffers: [[UdpPacketMetadata; 4]; I],
@@ -50,7 +50,7 @@ impl<const I: usize, const O: usize, const N: usize> Default for SmoltcpStorage<
             server_rx_metadata_buffer: [UdpPacketMetadata::EMPTY; 32],
             server_rx_payload_buffer: [0; 2048],
             server_tx_metadata_buffer: [UdpPacketMetadata::EMPTY; 32],
-            server_tx_payload_buffer: [0; 2048],
+            server_tx_payload_buffer: [0; 4096],
             jack_rx_metadata_buffers: [[UdpPacketMetadata::EMPTY; 16]; I],
             jack_rx_payload_buffers: [[0; 4096]; I],
             jack_tx_metadata_buffers: [[UdpPacketMetadata::EMPTY; 4]; I],
@@ -315,10 +315,14 @@ where
             && self.output_jack_endpoints[jack_id].is_specified()
         {
             match socket.send_slice(buf, self.output_jack_endpoints[jack_id]) {
-                Err(_) => Err(Error::Network),
+                Err(e) => {
+                    info!("Send slice error: {:?}", e);
+                    Err(Error::Network)
+                }
                 Ok(_) => Ok(()),
             }
         } else {
+            info!("Socket not ready");
             Err(Error::Network)
         }
     }
