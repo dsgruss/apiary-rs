@@ -13,11 +13,13 @@ cortex-m-semihosting = "0.3.3"
 panic-semihosting = "0.6.0"
 # panic-itm = "0.4"
 nb = "1"
-stm32f4xx-hal = { version = "0.13", features = ["stm32f429"] }
+# stm32f4xx-hal = { version = "0.13", features = ["stm32f429"] }
+stm32f4xx-hal = { version = "0.13", features = ["stm32f439"] }
 embedded-hal = "0.2.7"
 
 fugit = "0.3"
 log = { version = "0.4.6", features = ["release_max_level_info"] }
+# log = { version = "0.4.6", features = ["release_max_level_off"] }
 palette = { version = "0.6.1", default-features = false, features = ["libm"] }
 libm = "0.2.2"
 itertools = { version = "0.10.3", default-features = false }
@@ -34,7 +36,8 @@ features = ["network-smoltcp"]
 [dependencies.stm32-eth]
 # git = "https://github.com/stm32-rs/stm32-eth"
 path = "../../stm32-eth"
-features = ["stm32f429", "smoltcp-phy"]
+# features = ["stm32f429", "smoltcp-phy"]
+features = ["stm32f439", "smoltcp-phy"]
 # rev = "df8b0f9"
 
 # this lets you use `cargo fix`!
