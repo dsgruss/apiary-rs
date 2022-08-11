@@ -12,7 +12,7 @@ use smoltcp::{
         SocketStorage,
     },
     phy::Device,
-    socket::{Dhcpv4Event, Dhcpv4Socket, UdpPacketMetadata, UdpSocket, UdpSocketBuffer},
+    socket::{Dhcpv4Event, Dhcpv4Socket, UdpPacketMetadata, UdpSocket, UdpSocketBuffer, Socket},
     time::Instant,
     wire::{EthernetAddress, IpAddress, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr},
 };
@@ -28,15 +28,19 @@ pub struct SmoltcpStorage<'a, const I: usize, const O: usize, const N: usize> {
     neighbor_storage: [Option<(IpAddress, Neighbor)>; 16],
     routes_storage: [Option<(IpCidr, Route)>; 1],
     ipv4_multicast_storage: [Option<(Ipv4Address, ())>; N],
-    sockets: [SocketStorage<'a>; N],
+    sockets: [SocketStorage<'a>; 16],
     server_rx_metadata_buffer: [UdpPacketMetadata; 32],
     server_rx_payload_buffer: [u8; 2048],
     server_tx_metadata_buffer: [UdpPacketMetadata; 32],
     server_tx_payload_buffer: [u8; 4096],
-    jack_rx_metadata_buffers: [[UdpPacketMetadata; 16]; I],
-    jack_rx_payload_buffers: [[u8; 4096]; I],
-    jack_tx_metadata_buffers: [[UdpPacketMetadata; 4]; I],
-    jack_tx_payload_buffers: [[u8; 2048]; I],
+    input_jack_rx_metadata_buffers: [[UdpPacketMetadata; 16]; I],
+    input_jack_rx_payload_buffers: [[u8; 4096]; I],
+    input_jack_tx_metadata_buffers: [[UdpPacketMetadata; 0]; I],
+    input_jack_tx_payload_buffers: [[u8; 0]; I],
+    output_jack_rx_metadata_buffers: [[UdpPacketMetadata; 0]; O],
+    output_jack_rx_payload_buffers: [[u8; 0]; O],
+    output_jack_tx_metadata_buffers: [[UdpPacketMetadata; 16]; O],
+    output_jack_tx_payload_buffers: [[u8; 4096]; O],
 }
 
 impl<const I: usize, const O: usize, const N: usize> Default for SmoltcpStorage<'_, I, O, N> {
@@ -46,15 +50,19 @@ impl<const I: usize, const O: usize, const N: usize> Default for SmoltcpStorage<
             neighbor_storage: [None; 16],
             routes_storage: [None; 1],
             ipv4_multicast_storage: [None; N],
-            sockets: [0; N].map(|_| Default::default()), // This the best way to do this?
+            sockets: [0; 16].map(|_| Default::default()), // This the best way to do this?
             server_rx_metadata_buffer: [UdpPacketMetadata::EMPTY; 32],
             server_rx_payload_buffer: [0; 2048],
             server_tx_metadata_buffer: [UdpPacketMetadata::EMPTY; 32],
             server_tx_payload_buffer: [0; 4096],
-            jack_rx_metadata_buffers: [[UdpPacketMetadata::EMPTY; 16]; I],
-            jack_rx_payload_buffers: [[0; 4096]; I],
-            jack_tx_metadata_buffers: [[UdpPacketMetadata::EMPTY; 4]; I],
-            jack_tx_payload_buffers: [[0; 2048]; I],
+            input_jack_rx_metadata_buffers: [[UdpPacketMetadata::EMPTY; 16]; I],
+            input_jack_rx_payload_buffers: [[0; 4096]; I],
+            input_jack_tx_metadata_buffers: [[UdpPacketMetadata::EMPTY; 0]; I],
+            input_jack_tx_payload_buffers: [[0; 0]; I],
+            output_jack_rx_metadata_buffers: [[UdpPacketMetadata::EMPTY; 0]; O],
+            output_jack_rx_payload_buffers: [[0; 0]; O],
+            output_jack_tx_metadata_buffers: [[UdpPacketMetadata::EMPTY; 16]; O],
+            output_jack_tx_payload_buffers: [[0; 4096]; O],
         }
     }
 }
@@ -73,6 +81,7 @@ pub struct SmoltcpInterface<
     broadcast_endpoint: IpEndpoint,
     input_jack_handles: [SocketHandle; I],
     input_jack_endpoints: [Option<IpEndpoint>; I],
+    output_jack_handles: [SocketHandle; O],
     output_jack_endpoints: [IpEndpoint; O],
 }
 
@@ -117,16 +126,33 @@ where
 
         let mut i = 0;
         for (rx_meta, rx_payload, tx_meta, tx_payload) in izip!(
-            storage.jack_rx_metadata_buffers.iter_mut(),
-            storage.jack_rx_payload_buffers.iter_mut(),
-            storage.jack_tx_metadata_buffers.iter_mut(),
-            storage.jack_tx_payload_buffers.iter_mut(),
+            storage.input_jack_rx_metadata_buffers.iter_mut(),
+            storage.input_jack_rx_payload_buffers.iter_mut(),
+            storage.input_jack_tx_metadata_buffers.iter_mut(),
+            storage.input_jack_tx_payload_buffers.iter_mut(),
         ) {
             let input_jack_socket = UdpSocket::new(
                 UdpSocketBuffer::new(&mut rx_meta[..], &mut rx_payload[..]),
                 UdpSocketBuffer::new(&mut tx_meta[..], &mut tx_payload[..]),
             );
             input_jack_handles[i] = iface.add_socket(input_jack_socket);
+            i += 1;
+        }
+
+        let mut output_jack_handles: [SocketHandle; O] = [Default::default(); O];
+
+        let mut i = 0;
+        for (rx_meta, rx_payload, tx_meta, tx_payload) in izip!(
+            storage.output_jack_rx_metadata_buffers.iter_mut(),
+            storage.output_jack_rx_payload_buffers.iter_mut(),
+            storage.output_jack_tx_metadata_buffers.iter_mut(),
+            storage.output_jack_tx_payload_buffers.iter_mut(),
+        ) {
+            let output_jack_socket = UdpSocket::new(
+                UdpSocketBuffer::new(&mut rx_meta[..], &mut rx_payload[..]),
+                UdpSocketBuffer::new(&mut tx_meta[..], &mut tx_payload[..]),
+            );
+            output_jack_handles[i] = iface.add_socket(output_jack_socket);
             i += 1;
         }
         let broadcast_endpoint = IpEndpoint::from_str(crate::PATCH_EP).unwrap();
@@ -138,6 +164,7 @@ where
             server_handle,
             broadcast_endpoint,
             input_jack_handles,
+            output_jack_handles,
             input_jack_endpoints: [None; I],
             output_jack_endpoints: [IpEndpoint::UNSPECIFIED; O],
         }
@@ -219,6 +246,17 @@ where
             }
         }
     }
+
+    // pub fn enqueue_packet(&mut self, size: usize) -> impl Iterator<Item = &mut [u8]> {
+    //     self.iface.sockets_mut().filter_map(|(h, s)| match s {
+    //         Socket::Udp(s) => s.send(size, self.output_jack_endpoints[0]).ok(),
+    //         _ => None,
+    // })
+    //     // let res = for (i, out) in self.output_jack_handles.iter().enumerate() {
+    //     //     let socket = self.iface.get_socket::<UdpSocket>(*out);
+    //     //     socket.send(size, self.output_jack_endpoints[i]).unwrap()
+    //     // }
+    // }
 }
 
 impl<'a, DeviceT, const I: usize, const O: usize, const N: usize> Network<I, O>
@@ -236,6 +274,16 @@ where
                         info!("Opening UDP listener socket");
                         if let Err(_) = socket.bind(self.broadcast_endpoint.port) {
                             return Err(Error::Network);
+                        }
+                    }
+                    let mut port = 30000;
+                    for h in self.output_jack_handles {
+                        let socket = self.iface.get_socket::<UdpSocket>(h);
+                        if !socket.is_open() {
+                            if let Err(_) = socket.bind(port) {
+                                return Err(Error::Network);
+                            }
+                            port += 1;
                         }
                     }
                 }
@@ -309,14 +357,14 @@ where
     }
 
     fn jack_send(&mut self, jack_id: usize, buf: &[u8]) -> Result<(), Error> {
-        let socket = self.iface.get_socket::<UdpSocket>(self.server_handle);
+        let socket = self.iface.get_socket::<UdpSocket>(self.output_jack_handles[jack_id]);
         if socket.can_send()
             && self.dhcp_configured
             && self.output_jack_endpoints[jack_id].is_specified()
         {
             match socket.send_slice(buf, self.output_jack_endpoints[jack_id]) {
                 Err(e) => {
-                    info!("Send slice error: {:?}", e);
+                    info!("Send slice error: {:?}, {:?} {:?}", e, jack_id, self.output_jack_endpoints[jack_id]);
                     Err(Error::Network)
                 }
                 Ok(_) => Ok(()),
