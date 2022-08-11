@@ -18,6 +18,7 @@ compile_error!("You must enable exactly one network feature");
 extern crate log;
 
 mod leader_election;
+mod ping_patch;
 
 #[cfg(feature = "network-native")]
 pub mod socket_native;
@@ -33,9 +34,12 @@ extern crate lazy_static;
 
 pub mod dsp;
 
+use core::marker::PhantomData;
+
 use heapless::String;
 use leader_election::LeaderElection;
 use palette::{Hsv, IntoColor, Srgb};
+use ping_patch::PingPatch;
 use rand_core::RngCore;
 use serde::{Deserialize, Serialize};
 use zerocopy::{AsBytes, FromBytes};
@@ -119,6 +123,10 @@ impl AudioPacket {
             .map(|x| x.data.iter().map(|y| *y as f32).sum::<f32>())
             .sum::<f32>()
             / (BLOCK_SIZE as f32 * CHANNELS as f32)
+    }
+
+    pub fn max(&self) -> f32 {
+        *self.data[0].data.iter().max().unwrap_or(&0) as f32
     }
 }
 
@@ -299,7 +307,7 @@ pub struct Module<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> 
     uuid: Uuid,
     color: u16,
     interface: T,
-    leader_election: LeaderElection<R>,
+    ping_patch: PingPatch,
     input_patch_enabled: u16,
     output_patch_enabled: u16,
     dropped_packets: u32,
@@ -307,16 +315,18 @@ pub struct Module<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> 
     input_colors: [u16; I],
     input_jack_handles: usize,
     output_jack_handles: usize,
+    phantom: PhantomData<R>,
 }
 
 impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> {
     pub fn new(interface: T, rand_source: R, id: Uuid, color: u16, time: i64) -> Self {
-        let leader_election = LeaderElection::new(id.clone(), time, rand_source);
+        // let leader_election = LeaderElection::new(id.clone(), time, rand_source);
+        let ping_patch = PingPatch::new(id.clone(), time);
         Module {
             uuid: id,
             color,
             interface,
-            leader_election,
+            ping_patch,
             input_patch_enabled: 0,
             output_patch_enabled: 0,
             dropped_packets: 0,
@@ -324,6 +334,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             input_colors: [0; I],
             input_jack_handles: 0,
             output_jack_handles: 0,
+            phantom: PhantomData,
         }
     }
 
@@ -356,35 +367,22 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         let mut block = ProcessBlock::<I, O>::new([Default::default(); I], [Default::default(); O]);
         self.interface.poll(time)?;
         if self.can_send() {
+            let (mut resp, mut gsu) = (None, None);
             if let Ok(d) = self.recv_directive() {
-                match d {
-                    Directive::GlobalStateUpdate(gsu) => {
-                        self.process_gsu(gsu, time);
-                    }
-                    d => {
-                        if let Some(resp) = self.leader_election.poll(Some(d), time) {
-                            self.send_directive(&resp)?;
-                            if let Directive::GlobalStateUpdate(gsu) = resp {
-                                // Some network interfaces don't send multicast messages back to the
-                                // client, so we process again in case we are the leader.
-                                self.process_gsu(gsu, time);
-                            }
-                        }
-                    }
-                }
+                (resp, gsu) = self.ping_patch.poll(Some(d), time);
+            } else {
+                (resp, gsu) = self.ping_patch.poll(None, time);
             }
-            if let Some(resp) = self.leader_election.poll(None, time) {
+            if let Some(resp) = resp {
                 self.send_directive(&resp)?;
-                if let Directive::GlobalStateUpdate(gsu) = resp {
-                    // Some network interfaces don't send multicast messages back to the
-                    // client, so we process again in case we are the leader.
-                    self.process_gsu(gsu, time);
-                }
+            }
+            if let Some(Directive::GlobalStateUpdate(gsu)) = gsu {
+                self.process_gsu(gsu, time);
             }
             for i in 0..I {
                 if let Ok(a) = self.jack_recv(i) {
                     block.input[i] = a;
-                    let avg = block.input[i].avg();
+                    let avg = block.input[i].max();
                     let c: Srgb = Hsv::new(
                         self.input_colors[i] as f32,
                         1.0,
@@ -402,13 +400,13 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                 if self.jack_send(i, &buf).is_err() {
                     loop {}
                 };
-                let avg = block.output[i].avg();
+                let avg = block.output[i].max();
                 let c: Srgb =
                     Hsv::new(self.color as f32, 1.0, avg * 16.0 / i16::MAX as f32).into_color();
                 output_colors[i] = c.into_format();
             }
         } else {
-            self.leader_election.reset(time);
+            // self.leader_election.reset(time);
         }
         self.interface.poll(time)?;
         if time % 10000 == 0 && self.dropped_packets != 0 {
@@ -541,7 +539,7 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                 local_state.num_held_outputs += 1;
             }
         }
-        self.leader_election.update_local_state(local_state);
+        self.ping_patch.update_local_state(local_state);
         Ok(())
     }
 
