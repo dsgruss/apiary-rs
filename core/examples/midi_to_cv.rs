@@ -15,6 +15,7 @@ enum MidiMessage {
 struct Voice {
     note: u8,
     on: bool,
+    just_on: bool,
     vel: u8,
     timestamp: i64,
 }
@@ -119,6 +120,7 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for MidiToCv {
                         {
                             v.note = note;
                             v.on = true;
+                            v.just_on = true;
                             v.vel = vel;
                             v.timestamp = self.time;
                         }
@@ -138,7 +140,11 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for MidiToCv {
         for i in 0..CHANNELS {
             note_frame.data[i] = midi_note_to_voct(self.voices[i].note);
             if self.voices[i].on {
-                gate_frame.data[i] = 16000;
+                if self.voices[i].just_on {
+                    self.voices[i].just_on = false;
+                } else {
+                    gate_frame.data[i] = 16000;
+                }
             }
             vel_frame.data[i] = (self.voices[i].vel as i16) << 7;
         }
