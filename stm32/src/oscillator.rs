@@ -9,14 +9,14 @@ use stm32f4xx_hal::gpio;
 
 use crate::ui::Switch;
 
-pub const NUM_INPUTS: usize = 1;
-pub const NUM_OUTPUTS: usize = 4;
+pub const NUM_INPUTS: usize = 2;
+pub const NUM_OUTPUTS: usize = 2;
 pub const COLOR: u16 = 125;
 pub const NAME: &str = "oscillator";
 
 pub struct OscillatorPins {
     pub input: gpio::Pin<'C', 7>,
-    pub sin: gpio::Pin<'C', 8>,
+    pub level: gpio::Pin<'C', 8>,
     pub tri: gpio::Pin<'C', 9>,
     pub saw: gpio::Pin<'D', 12>,
     pub sqr: gpio::Pin<'D', 13>,
@@ -24,14 +24,14 @@ pub struct OscillatorPins {
 
 pub struct Oscillator {
     input: Switch<'C', 7>,
-    sin: Switch<'C', 8>,
-    tri: Switch<'C', 9>,
+    level: Switch<'C', 8>,
+    // tri: Switch<'C', 9>,
     saw: Switch<'D', 12>,
     sqr: Switch<'D', 13>,
     osc: [WtOscillator; CHANNELS],
     jack_input: InputJackHandle,
-    jack_sin: OutputJackHandle,
-    jack_tri: OutputJackHandle,
+    jack_level: InputJackHandle,
+    // jack_tri: OutputJackHandle,
     jack_saw: OutputJackHandle,
     jack_sqr: OutputJackHandle,
     params: [f32; 3],
@@ -48,14 +48,14 @@ impl Oscillator {
     {
         Oscillator {
             input: Switch::new(pins.input),
-            sin: Switch::new(pins.sin),
-            tri: Switch::new(pins.tri),
+            level: Switch::new(pins.level),
+            // tri: Switch::new(pins.tri),
             saw: Switch::new(pins.saw),
             sqr: Switch::new(pins.sqr),
             osc: Default::default(),
             jack_input: module.add_input_jack().unwrap(),
-            jack_sin: module.add_output_jack().unwrap(),
-            jack_tri: module.add_output_jack().unwrap(),
+            jack_level: module.add_input_jack().unwrap(),
+            // jack_tri: module.add_output_jack().unwrap(),
             jack_saw: module.add_output_jack().unwrap(),
             jack_sqr: module.add_output_jack().unwrap(),
             params: [0.0; 3],
@@ -68,14 +68,14 @@ impl Oscillator {
         R: RngCore,
     {
         self.input.debounce();
-        self.sin.debounce();
-        self.tri.debounce();
+        self.level.debounce();
+        // self.tri.debounce();
         self.saw.debounce();
         self.sqr.debounce();
 
         if self.input.changed()
-            || self.sin.changed()
-            || self.tri.changed()
+            || self.level.changed()
+        //    || self.tri.changed()
             || self.saw.changed()
             || self.sqr.changed()
         {
@@ -83,11 +83,11 @@ impl Oscillator {
                 .set_input_patch_enabled(self.jack_input, self.input.just_pressed())
                 .unwrap();
             module
-                .set_output_patch_enabled(self.jack_sin, self.sin.just_pressed())
+                .set_input_patch_enabled(self.jack_level, self.level.just_pressed())
                 .unwrap();
-            module
-                .set_output_patch_enabled(self.jack_tri, self.tri.just_pressed())
-                .unwrap();
+            // module
+            //     .set_output_patch_enabled(self.jack_tri, self.tri.just_pressed())
+            //     .unwrap();
             module
                 .set_output_patch_enabled(self.jack_saw, self.saw.just_pressed())
                 .unwrap();
@@ -98,30 +98,32 @@ impl Oscillator {
     }
 
     pub fn process(&mut self, block: &mut ProcessBlock<NUM_INPUTS, NUM_OUTPUTS>) {
-        let mut sin_out = AudioPacket::default();
-        let mut tri_out = AudioPacket::default();
+        // let mut sin_out = AudioPacket::default();
+        // let mut tri_out = AudioPacket::default();
         let mut saw_out = AudioPacket::default();
         let mut sqr_out = AudioPacket::default();
-        let a = 16000.0;
+        // let a = 16000.0;
+        let lev = block.get_input(self.jack_level).data[0].data.map(|x| x as f32 * 0.5);
         // voct_to_frequency_table(din.data[0]);
         let freq_start = block.get_input(self.jack_input).data[0].data.map(|x| voct_to_frequency_table(x));
-        for (dsin, dtri, dsaw, dsqr) in izip!(
-            sin_out.data.iter_mut(),
-            tri_out.data.iter_mut(),
+        for (/*dsin, dtri,*/ dsaw, dsqr) in izip!(
+            // sin_out.data.iter_mut(),
+            // tri_out.data.iter_mut(),
             saw_out.data.iter_mut(),
             sqr_out.data.iter_mut()
         ) {
-            for (freq, csin, ctri, csaw, csqr, osc) in izip!(
+            for (freq, a, /*csin, ctri,*/ csaw, csqr, osc) in izip!(
                 freq_start,
-                dsin.data.iter_mut(),
-                dtri.data.iter_mut(),
+                lev,
+                // dsin.data.iter_mut(),
+                // dtri.data.iter_mut(),
                 dsaw.data.iter_mut(),
                 dsqr.data.iter_mut(),
                 self.osc.iter_mut()
             ) {
-                let (sin, tri, saw, sqr) = osc.process_approx(a, freq);
-                *csin = sin;
-                *ctri = tri;
+                let (_, _, saw, sqr) = osc.process_approx(a, freq);
+                // *csin = sin;
+                // *ctri = tri;
                 *csaw = saw;
                 *csqr = sqr;
             }
@@ -141,8 +143,9 @@ impl Oscillator {
     pub fn get_light_data(&self, update: PollUpdate<NUM_INPUTS, NUM_OUTPUTS>) -> [Srgb<u8>; 5] {
         [
             update.get_input_color(self.jack_input),
-            update.get_output_color(self.jack_sin),
-            update.get_output_color(self.jack_tri),
+            update.get_input_color(self.jack_level),
+            // update.get_output_color(self.jack_tri),
+            Srgb::new(0x00, 0x10, 0x00),
             update.get_output_color(self.jack_saw),
             update.get_output_color(self.jack_sqr),
         ]
