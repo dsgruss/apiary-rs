@@ -206,7 +206,10 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
         }
         self.enq_size = size;
         let mut res: [Option<&mut [u8]>; O] = [(); O].map(|_| None);
-        for (i, chunk) in self.output_buffer[0..size*O].chunks_exact_mut(size).enumerate() {
+        for (i, chunk) in self.output_buffer[0..size * O]
+            .chunks_exact_mut(size)
+            .enumerate()
+        {
             res[i] = Some(chunk);
         }
         res.map(|c| c.unwrap())
@@ -217,16 +220,17 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
             Ok(true)
         } else {
             for i in 0..O {
-                match self
-            .patch_socket
-            .send_to(&self.output_buffer[i*self.enq_size..(i+1)*self.enq_size], &self.output_eps[i].into()) {
-                Ok(_) => {},
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {},
-                Err(e) => {
-                    info!("Jack send error: {:?}", e);
-                    return Err(Error::Network);
+                match self.patch_socket.send_to(
+                    &self.output_buffer[i * self.enq_size..(i + 1) * self.enq_size],
+                    &self.output_eps[i].into(),
+                ) {
+                    Ok(_) => {}
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(e) => {
+                        info!("Jack send error: {:?}", e);
+                        return Err(Error::Network);
+                    }
                 }
-            }
             }
             Ok(true)
         }

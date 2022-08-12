@@ -368,11 +368,10 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         let mut output_colors: [Srgb<u8>; O] = [Default::default(); O];
         self.interface.poll(time)?;
         if self.can_send() {
-            let output_packets = self.interface.enqueue_packets(768).map(|b| {
-                unsafe {
-                    &mut *(b as *mut [u8] as *mut AudioPacket)
-                }
-            });
+            let output_packets = self
+                .interface
+                .enqueue_packets(768)
+                .map(|b| unsafe { &mut *(b as *mut [u8] as *mut AudioPacket) });
             let mut block = ProcessBlock::<I, O>::new([Default::default(); I], output_packets);
             // let (mut resp, mut gsu) = (None, None);
             let (resp, gsu) = if let Ok(d) = self.recv_directive() {

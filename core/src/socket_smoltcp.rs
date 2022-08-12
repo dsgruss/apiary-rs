@@ -12,7 +12,7 @@ use smoltcp::{
         SocketStorage,
     },
     phy::Device,
-    socket::{Dhcpv4Event, Dhcpv4Socket, UdpPacketMetadata, UdpSocket, UdpSocketBuffer, Socket},
+    socket::{Dhcpv4Event, Dhcpv4Socket, Socket, UdpPacketMetadata, UdpSocket, UdpSocketBuffer},
     time::Instant,
     wire::{EthernetAddress, IpAddress, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr},
 };
@@ -346,14 +346,19 @@ where
     }
 
     fn jack_send(&mut self, jack_id: usize, buf: &[u8]) -> Result<(), Error> {
-        let socket = self.iface.get_socket::<UdpSocket>(self.output_jack_handles[jack_id]);
+        let socket = self
+            .iface
+            .get_socket::<UdpSocket>(self.output_jack_handles[jack_id]);
         if socket.can_send()
             && self.dhcp_configured
             && self.output_jack_endpoints[jack_id].is_specified()
         {
             match socket.send_slice(buf, self.output_jack_endpoints[jack_id]) {
                 Err(e) => {
-                    info!("Send slice error: {:?}, {:?} {:?}", e, jack_id, self.output_jack_endpoints[jack_id]);
+                    info!(
+                        "Send slice error: {:?}, {:?} {:?}",
+                        e, jack_id, self.output_jack_endpoints[jack_id]
+                    );
                     Err(Error::Network)
                 }
                 Ok(_) => Ok(()),

@@ -1,10 +1,7 @@
 use crate::{
     Directive,
-    Directive::{
-        GlobalStateUpdate,  HeartbeatResponse, 
-    },
-    DirectiveGlobalStateUpdate,  DirectiveHeartbeatResponse,
-   HeldInputJack, HeldOutputJack,
+    Directive::{GlobalStateUpdate, HeartbeatResponse},
+    DirectiveGlobalStateUpdate, DirectiveHeartbeatResponse, HeldInputJack, HeldOutputJack,
     LocalState, PatchState, Uuid,
 };
 use heapless::FnvIndexMap;
@@ -18,7 +15,6 @@ pub(crate) struct PingPatch {
     local_state: LocalState,
     heartbeat_timeout: i64,
     last_update: Option<Directive>,
-
 }
 
 impl PingPatch {
@@ -42,7 +38,11 @@ impl PingPatch {
         time > self.heartbeat_timeout
     }
 
-    pub(crate) fn poll(&mut self, message: Option<Directive>, time: i64) -> (Option<Directive>, Option<Directive>) {
+    pub(crate) fn poll(
+        &mut self,
+        message: Option<Directive>,
+        time: i64,
+    ) -> (Option<Directive>, Option<Directive>) {
         if let Some(HeartbeatResponse(resp)) = message {
             if resp.uuid != self.id {
                 self.seen_hosts.insert(resp.uuid, resp.state).unwrap();
@@ -55,13 +55,14 @@ impl PingPatch {
             gsu = self.check_global_state_update();
             self.seen_hosts.clear();
             if self.local_state.num_held_inputs + self.local_state.num_held_outputs > 0 {
-                self.seen_hosts.insert(self.id.clone(), Some(self.local_state.clone())).unwrap();
+                self.seen_hosts
+                    .insert(self.id.clone(), Some(self.local_state.clone()))
+                    .unwrap();
                 ping = Some(self.heartbeat_response_success(0, 0));
             }
         }
         (ping, gsu)
     }
-
 
     fn check_global_state_update(&mut self) -> Option<Directive> {
         let mut input_jack = None;
