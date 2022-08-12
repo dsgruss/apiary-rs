@@ -1,6 +1,6 @@
 use apiary_core::{
-    dsp::oscillators::WtOscillator, AudioPacket, InputJackHandle, Module, Network,
-    OutputJackHandle, PollUpdate, ProcessBlock, CHANNELS, voct_to_frequency_table,
+    dsp::oscillators::WtOscillator, voct_to_frequency_table, AudioPacket, InputJackHandle, Module,
+    Network, OutputJackHandle, PollUpdate, ProcessBlock, CHANNELS,
 };
 use itertools::izip;
 use palette::Srgb;
@@ -103,9 +103,13 @@ impl Oscillator {
         let mut saw_out = AudioPacket::default();
         let mut sqr_out = AudioPacket::default();
         // let a = 16000.0;
-        let lev = block.get_input(self.jack_level).data[0].data.map(|x| x as f32 * 0.5);
+        let lev = block.get_input(self.jack_level).data[0]
+            .data
+            .map(|x| x as f32 * 0.5);
         // voct_to_frequency_table(din.data[0]);
-        let freq_start = block.get_input(self.jack_input).data[0].data.map(|x| voct_to_frequency_table(x));
+        let freq_start = block.get_input(self.jack_input).data[0]
+            .data
+            .map(|x| voct_to_frequency_table(x));
         for (/*dsin, dtri,*/ dsaw, dsqr) in izip!(
             // sin_out.data.iter_mut(),
             // tri_out.data.iter_mut(),
