@@ -46,6 +46,7 @@ pub struct NativeInterface<const I: usize, const O: usize> {
     input_groups: Vec<Option<Ipv4Addr>>,
     output_eps: Vec<SocketAddrV4>,
     local_addr: Ipv4Addr,
+    input_buffers: [[u8; 1500]; I],
     output_buffer: [u8; 10000],
     enq_size: usize,
 }
@@ -112,6 +113,7 @@ impl<const I: usize, const O: usize> NativeInterface<I, O> {
             input_groups: vec![None; I],
             output_eps,
             local_addr,
+            input_buffers: [[0; 1500]; I],
             output_buffer: [0; 10000],
             enq_size: 0,
         })
@@ -152,36 +154,6 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
         Ok(())
     }
 
-    fn jack_recv(&mut self, jack_id: usize, buf: &mut [u8]) -> Result<usize, Error> {
-        if jack_id >= self.input_sockets.len() {
-            return Err(Error::InvalidJackId);
-        }
-        // Safety: the `recv` implementation promises not to write uninitialised
-        // bytes to the `buf`fer, so this casting is safe.
-        let buf = unsafe { &mut *(buf as *mut [u8] as *mut [MaybeUninit<u8>]) };
-        match self.input_sockets[jack_id].recv_from(buf) {
-            Ok((size, _)) => Ok(size),
-            Err(_) => Err(Error::NoData),
-        }
-    }
-
-    fn jack_send(&mut self, jack_id: usize, buf: &[u8]) -> Result<(), Error> {
-        if jack_id >= self.output_eps.len() {
-            return Err(Error::InvalidJackId);
-        }
-        match self
-            .patch_socket
-            .send_to(buf, &self.output_eps[jack_id].into())
-        {
-            Ok(_) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => Ok(()),
-            Err(e) => {
-                info!("Jack send error: {:?}", e);
-                Err(Error::Network)
-            }
-        }
-    }
-
     fn jack_addr(&mut self, jack_id: usize) -> Result<[u8; 4], Error> {
         if jack_id >= self.output_eps.len() {
             return Err(Error::InvalidJackId);
@@ -200,9 +172,9 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
         Ok(())
     }
 
-    fn enqueue_packets(&mut self, size: usize) -> [&mut [u8]; O] {
+    fn enqueue_packets(&mut self, size: usize) -> Result<[&mut [u8]; O], Error> {
         if size * O > self.output_buffer.len() {
-            panic!("Output buffer too small");
+            return Err(Error::StorageFull);
         }
         self.enq_size = size;
         let mut res: [Option<&mut [u8]>; O] = [(); O].map(|_| None);
@@ -212,12 +184,33 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
         {
             res[i] = Some(chunk);
         }
-        res.map(|c| c.unwrap())
+        Ok(res.map(|c| c.unwrap()))
     }
 
-    fn poll(&mut self, _time: i64) -> Result<bool, Error> {
+    fn dequeue_packets(&mut self, size: usize) -> ([&[u8]; I], u32) {
+        let mut dropped_packets = 0;
+        for jack_id in 0..I {
+            // Safety: the `recv` implementation promises not to write uninitialised
+            // bytes to the `buf`fer, so this casting is safe.
+            let buf = unsafe { &mut *(&mut self.input_buffers[jack_id][..] as *mut [u8] as *mut [MaybeUninit<u8>]) };
+            match self.input_sockets[jack_id].recv_from(buf) {
+                Ok((recv_size, _)) if recv_size == size => {},
+                _ => {
+                    self.input_buffers[jack_id] = [0; 1500];
+                    dropped_packets += 1;
+                }
+            }
+        }
+        let mut res: [Option<&[u8]>; I] = [(); I].map(|_| None);
+        for (i, buf) in self.input_buffers.iter().enumerate() {
+            res[i] = Some(&buf[0..size]);
+        }
+        (res.map(|c| c.unwrap()), dropped_packets)
+    }
+
+    fn poll(&mut self, _time: i64) -> Result<(), Error> {
         if self.enq_size == 0 {
-            Ok(true)
+            Ok(())
         } else {
             for i in 0..O {
                 match self.patch_socket.send_to(
@@ -232,7 +225,8 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
                     }
                 }
             }
-            Ok(true)
+            Ok(())
         }
     }
+
 }

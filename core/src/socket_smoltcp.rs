@@ -83,6 +83,7 @@ pub struct SmoltcpInterface<
     input_jack_endpoints: [Option<IpEndpoint>; I],
     output_jack_handles: [SocketHandle; O],
     output_jack_endpoints: [IpEndpoint; O],
+    empty_packet: [u8; 1500],
 }
 
 impl<'a, DeviceT, const I: usize, const O: usize, const N: usize>
@@ -167,6 +168,7 @@ where
             output_jack_handles,
             input_jack_endpoints: [None; I],
             output_jack_endpoints: [IpEndpoint::UNSPECIFIED; O],
+            empty_packet: [0; 1500],
         }
     }
 
@@ -253,7 +255,7 @@ impl<'a, DeviceT, const I: usize, const O: usize, const N: usize> Network<I, O>
 where
     DeviceT: for<'d> Device<'d>,
 {
-    fn poll(&mut self, time: i64) -> Result<bool, Error> {
+    fn poll(&mut self, time: i64) -> Result<(), Error> {
         match self.iface.poll(Instant::from_millis(time)) {
             Ok(_) => {
                 self.dhcp_poll(time);
@@ -276,7 +278,7 @@ where
                         }
                     }
                 }
-                Ok(true)
+                Ok(())
             }
             Err(_) => Err(Error::Network),
         }
@@ -331,52 +333,19 @@ where
         jack_socket.bind(ep).or(Err(Error::Network))
     }
 
-    fn jack_recv(&mut self, jack_id: usize, buf: &mut [u8]) -> Result<usize, Error> {
-        let jack_socket = self
-            .iface
-            .get_socket::<UdpSocket>(self.input_jack_handles[jack_id]);
-        if jack_socket.can_recv() && self.dhcp_configured {
-            match jack_socket.recv_slice(buf) {
-                Ok((size, _)) => Ok(size),
-                Err(_) => Err(Error::Network),
-            }
-        } else {
-            Err(Error::NoData)
-        }
-    }
-
-    fn jack_send(&mut self, jack_id: usize, buf: &[u8]) -> Result<(), Error> {
-        let socket = self
-            .iface
-            .get_socket::<UdpSocket>(self.output_jack_handles[jack_id]);
-        if socket.can_send()
-            && self.dhcp_configured
-            && self.output_jack_endpoints[jack_id].is_specified()
-        {
-            match socket.send_slice(buf, self.output_jack_endpoints[jack_id]) {
-                Err(e) => {
-                    info!(
-                        "Send slice error: {:?}, {:?} {:?}",
-                        e, jack_id, self.output_jack_endpoints[jack_id]
-                    );
-                    Err(Error::Network)
-                }
-                Ok(_) => Ok(()),
-            }
-        } else {
-            info!("Socket not ready");
-            Err(Error::Network)
-        }
-    }
-
-    fn enqueue_packets(&mut self, size: usize) -> [&mut [u8]; O] {
+    fn enqueue_packets(&mut self, size: usize) -> Result<[&mut [u8]; O], Error> {
         let mut res: [Option<&mut [u8]>; O] = [(); O].map(|_| None);
         for (h, s) in self.iface.sockets_mut() {
             match s {
                 Socket::Udp(s) => {
                     for i in 0..O {
                         if self.output_jack_handles[i] == h {
-                            res[i] = Some(s.send(size, self.output_jack_endpoints[i]).unwrap());
+                            if s.can_send() && self.dhcp_configured && self.output_jack_endpoints[i].is_specified() {
+                                match s.send(size, self.output_jack_endpoints[i]) {
+                                    Ok(b) => res[i] = Some(b),
+                                    _ => return Err(Error::Network),
+                                }
+                            }
                             break;
                         }
                     }
@@ -384,11 +353,36 @@ where
                 _ => {}
             };
         }
-        res.map(|s| s.unwrap())
-        // let res = for (i, out) in self.output_jack_handles.iter().enumerate() {
-        //     let socket = self.iface.get_socket::<UdpSocket>(*out);
-        //     socket.send(size, self.output_jack_endpoints[i]).unwrap()
-        // }
+        Ok(res.map(|s| s.unwrap()))
+    }
+
+    fn dequeue_packets(&mut self, size: usize) -> ([&[u8]; I], u32) {
+        let mut dropped_packets = 0;
+        let mut res = [&self.empty_packet[0..size]; I];
+        for (h, s) in self.iface.sockets_mut() {
+            match s {
+                Socket::Udp(s) => {
+                    for i in 0..I {
+                        if self.input_jack_handles[i] == h {
+                            if s.can_recv() && self.dhcp_configured {
+                                if let Ok((buf, _)) = s.recv() {
+                                    if buf.len() == size {
+                                        res[i] = buf;
+                                    } else {
+                                        dropped_packets += 1;
+                                    }
+                                }
+                            } else {
+                                dropped_packets += 1;
+                            }
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            };
+        }
+        (res, dropped_packets)
     }
 
     fn jack_addr(&mut self, jack_id: usize) -> Result<[u8; 4], Error> {
@@ -415,4 +409,6 @@ where
         }
         Ok(())
     }
+
+
 }

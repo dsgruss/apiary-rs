@@ -271,9 +271,7 @@ pub struct OutputJackHandle(usize);
 /// network stack, this trait defines what methods are needed to be implemented to accomplish this.
 pub trait Network<const I: usize, const O: usize> {
     /// Update internal state and send/recv packets, if needed
-    fn poll(&mut self, _time: i64) -> Result<bool, Error> {
-        Ok(true)
-    }
+    fn poll(&mut self, _time: i64) -> Result<(), Error>;
     /// Check if socket is ready for sending
     fn can_send(&mut self) -> bool;
     /// Get bytes from the directive multicast
@@ -283,12 +281,10 @@ pub trait Network<const I: usize, const O: usize> {
     /// Connect an input jack to an output endpoint
     fn jack_connect(&mut self, input_jack_id: usize, addr: [u8; 4], time: i64)
         -> Result<(), Error>;
-    /// Get audio data for a particular jack
-    fn jack_recv(&mut self, input_jack_id: usize, buf: &mut [u8]) -> Result<usize, Error>;
-    /// Send audio data for a particular jack
-    fn jack_send(&mut self, output_jack_id: usize, buf: &[u8]) -> Result<(), Error>;
+    /// Get the next group of incoming packets and number of dropped packets
+    fn dequeue_packets(&mut self, size: usize) -> ([&[u8]; I], u32);
     /// Get memory space for all output data, to be sent on next poll
-    fn enqueue_packets(&mut self, size: usize) -> [&mut [u8]; O];
+    fn enqueue_packets(&mut self, size: usize) -> Result<[&mut [u8]; O], Error>;
     /// Get multicast address for a particular jack
     fn jack_addr(&mut self, output_jack_id: usize) -> Result<[u8; 4], Error>;
     /// Disconnect an input jack
@@ -368,12 +364,15 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         let mut output_colors: [Srgb<u8>; O] = [Default::default(); O];
         self.interface.poll(time)?;
         if self.can_send() {
+            let (packets, dropped) = self.interface.dequeue_packets(mem::size_of::<AudioPacket>());
+            self.dropped_packets += dropped;
+            let input_packets = packets.map(|p| unsafe { & *(p as *const [u8] as *const AudioPacket) });
             let output_packets = self
                 .interface
-                .enqueue_packets(768)
-                .map(|b| unsafe { &mut *(b as *mut [u8] as *mut AudioPacket) });
-            let mut block = ProcessBlock::<I, O>::new([Default::default(); I], output_packets);
-            // let (mut resp, mut gsu) = (None, None);
+                .enqueue_packets(mem::size_of::<AudioPacket>()).unwrap()
+                .map(|p| unsafe { &mut *(p as *mut [u8] as *mut AudioPacket) });
+
+            let mut block = ProcessBlock::<I, O>::new(input_packets, output_packets);
             let (resp, gsu) = if let Ok(d) = self.recv_directive() {
                 self.ping_patch.poll(Some(d), time)
             } else {
@@ -386,8 +385,6 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                 self.process_gsu(gsu, time);
             }
             for i in 0..I {
-                if let Ok(a) = self.jack_recv(i) {
-                    block.input[i] = a;
                     let avg = block.input[i].max();
                     let c: Srgb = Hsv::new(
                         self.input_colors[i] as f32,
@@ -396,16 +393,9 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                     )
                     .into_color();
                     input_colors[i] = c.into_format();
-                } else {
-                    self.dropped_packets += 1;
-                }
             }
             f(&mut block);
             for i in 0..O {
-                // let buf = block.output[i];
-                // if self.jack_send(i, &buf).is_err() {
-                //     loop {}
-                // };
                 let avg = block.output[i].max();
                 let c: Srgb =
                     Hsv::new(self.color as f32, 1.0, avg * 16.0 / i16::MAX as f32).into_color();
@@ -469,19 +459,6 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                 Err(Error::Parse)
             }
         }
-    }
-
-    fn jack_recv(&mut self, jack_id: usize) -> Result<AudioPacket, Error> {
-        let mut buf = [0; 2048];
-        let size = self.interface.jack_recv(jack_id, &mut buf)?;
-        match AudioPacket::read_from(&mut buf[0..size]) {
-            Some(res) => Ok(res),
-            None => Err(Error::Parse),
-        }
-    }
-
-    fn jack_send(&mut self, jack_id: usize, data: &AudioPacket) -> Result<(), Error> {
-        self.interface.jack_send(jack_id, data.as_bytes())
     }
 
     pub fn send_halt(&mut self) {
@@ -570,17 +547,17 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
 }
 
 pub struct ProcessBlock<'a, const I: usize, const O: usize> {
-    input: [AudioPacket; I],
+    input: [&'a AudioPacket; I],
     output: [&'a mut AudioPacket; O],
 }
 
 impl<'a, const I: usize, const O: usize> ProcessBlock<'a, I, O> {
-    pub fn new(input: [AudioPacket; I], output: [&'a mut AudioPacket; O]) -> Self {
+    pub fn new(input: [&'a AudioPacket; I], output: [&'a mut AudioPacket; O]) -> Self {
         ProcessBlock { input, output }
     }
 
     pub fn get_input(&self, handle: InputJackHandle) -> &AudioPacket {
-        &self.input[handle.0]
+        self.input[handle.0]
     }
 
     pub fn set_output(&mut self, handle: OutputJackHandle, data: AudioPacket) {
