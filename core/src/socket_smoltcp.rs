@@ -340,7 +340,10 @@ where
                 Socket::Udp(s) => {
                     for i in 0..O {
                         if self.output_jack_handles[i] == h {
-                            if s.can_send() && self.dhcp_configured && self.output_jack_endpoints[i].is_specified() {
+                            if s.can_send()
+                                && self.dhcp_configured
+                                && self.output_jack_endpoints[i].is_specified()
+                            {
                                 match s.send(size, self.output_jack_endpoints[i]) {
                                     Ok(b) => res[i] = Some(b),
                                     _ => return Err(Error::Network),
@@ -409,6 +412,4 @@ where
         }
         Ok(())
     }
-
-
 }

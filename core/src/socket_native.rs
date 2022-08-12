@@ -192,9 +192,12 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
         for jack_id in 0..I {
             // Safety: the `recv` implementation promises not to write uninitialised
             // bytes to the `buf`fer, so this casting is safe.
-            let buf = unsafe { &mut *(&mut self.input_buffers[jack_id][..] as *mut [u8] as *mut [MaybeUninit<u8>]) };
+            let buf = unsafe {
+                &mut *(&mut self.input_buffers[jack_id][..] as *mut [u8]
+                    as *mut [MaybeUninit<u8>])
+            };
             match self.input_sockets[jack_id].recv_from(buf) {
-                Ok((recv_size, _)) if recv_size == size => {},
+                Ok((recv_size, _)) if recv_size == size => {}
                 _ => {
                     self.input_buffers[jack_id] = [0; 1500];
                     dropped_packets += 1;
@@ -228,5 +231,4 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
             Ok(())
         }
     }
-
 }

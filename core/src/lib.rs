@@ -364,12 +364,16 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
         let mut output_colors: [Srgb<u8>; O] = [Default::default(); O];
         self.interface.poll(time)?;
         if self.can_send() {
-            let (packets, dropped) = self.interface.dequeue_packets(mem::size_of::<AudioPacket>());
+            let (packets, dropped) = self
+                .interface
+                .dequeue_packets(mem::size_of::<AudioPacket>());
             self.dropped_packets += dropped;
-            let input_packets = packets.map(|p| unsafe { & *(p as *const [u8] as *const AudioPacket) });
+            let input_packets =
+                packets.map(|p| unsafe { &*(p as *const [u8] as *const AudioPacket) });
             let output_packets = self
                 .interface
-                .enqueue_packets(mem::size_of::<AudioPacket>()).unwrap()
+                .enqueue_packets(mem::size_of::<AudioPacket>())
+                .unwrap()
                 .map(|p| unsafe { &mut *(p as *mut [u8] as *mut AudioPacket) });
 
             let mut block = ProcessBlock::<I, O>::new(input_packets, output_packets);
@@ -385,14 +389,14 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
                 self.process_gsu(gsu, time);
             }
             for i in 0..I {
-                    let avg = block.input[i].max();
-                    let c: Srgb = Hsv::new(
-                        self.input_colors[i] as f32,
-                        1.0,
-                        avg * 16.0 / i16::MAX as f32,
-                    )
-                    .into_color();
-                    input_colors[i] = c.into_format();
+                let avg = block.input[i].max();
+                let c: Srgb = Hsv::new(
+                    self.input_colors[i] as f32,
+                    1.0,
+                    avg * 16.0 / i16::MAX as f32,
+                )
+                .into_color();
+                input_colors[i] = c.into_format();
             }
             f(&mut block);
             for i in 0..O {
