@@ -38,7 +38,7 @@ impl log::Log for SerialLogger {
                 if let Some(transfer) = TRANSFER.borrow(cs).borrow_mut().as_mut() {
                     let mut log_queue = LOG_QUEUE.borrow(cs).borrow_mut();
                     for b in s.as_bytes() {
-                        if let Err(_) = log_queue.enqueue(*b) {
+                        if log_queue.enqueue(*b).is_err() {
                             break;
                         }
                     }
@@ -61,8 +61,10 @@ impl log::Log for SerialLogger {
 static LOGGER: SerialLogger = SerialLogger {};
 
 pub fn init(tx_pin: Pin<'D', 8>, usart3: USART3, dma1: DMA1, clocks: &Clocks) {
-    let mut serial_config = Config::default();
-    serial_config.dma = DmaConfig::Tx;
+    let serial_config = Config {
+        dma: DmaConfig::Tx,
+        ..Default::default()
+    };
     let mut tx = usart3.tx(tx_pin, serial_config, clocks).unwrap();
     writeln!(tx, "\n\n ☢️📶📼 v0.1.0\n\n").unwrap();
 
