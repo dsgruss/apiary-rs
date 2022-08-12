@@ -46,6 +46,8 @@ pub struct NativeInterface<const I: usize, const O: usize> {
     input_groups: Vec<Option<Ipv4Addr>>,
     output_eps: Vec<SocketAddrV4>,
     local_addr: Ipv4Addr,
+    output_buffer: [u8; 10000],
+    enq_size: usize,
 }
 
 impl<const I: usize, const O: usize> NativeInterface<I, O> {
@@ -110,6 +112,8 @@ impl<const I: usize, const O: usize> NativeInterface<I, O> {
             input_groups: vec![None; I],
             output_eps,
             local_addr,
+            output_buffer: [0; 10000],
+            enq_size: 0,
         })
     }
 }
@@ -194,5 +198,37 @@ impl<const I: usize, const O: usize> Network<I, O> for NativeInterface<I, O> {
             self.input_groups[jack_id] = None;
         }
         Ok(())
+    }
+
+    fn enqueue_packets(&mut self, size: usize) -> [&mut [u8]; O] {
+        if size * O > self.output_buffer.len() {
+            panic!("Output buffer too small");
+        }
+        self.enq_size = size;
+        let mut res: [Option<&mut [u8]>; O] = [(); O].map(|_| None);
+        for (i, chunk) in self.output_buffer[0..size*O].chunks_exact_mut(size).enumerate() {
+            res[i] = Some(chunk);
+        }
+        res.map(|c| c.unwrap())
+    }
+
+    fn poll(&mut self, _time: i64) -> Result<bool, Error> {
+        if self.enq_size == 0 {
+            Ok(true)
+        } else {
+            for i in 0..O {
+                match self
+            .patch_socket
+            .send_to(&self.output_buffer[i*self.enq_size..(i+1)*self.enq_size], &self.output_eps[i].into()) {
+                Ok(_) => {},
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {},
+                Err(e) => {
+                    info!("Jack send error: {:?}", e);
+                    return Err(Error::Network);
+                }
+            }
+            }
+            Ok(true)
+        }
     }
 }

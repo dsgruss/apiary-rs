@@ -34,7 +34,7 @@ extern crate lazy_static;
 
 pub mod dsp;
 
-use core::marker::PhantomData;
+use core::{marker::PhantomData, mem};
 
 use heapless::String;
 use leader_election::LeaderElection;
@@ -287,6 +287,8 @@ pub trait Network<const I: usize, const O: usize> {
     fn jack_recv(&mut self, input_jack_id: usize, buf: &mut [u8]) -> Result<usize, Error>;
     /// Send audio data for a particular jack
     fn jack_send(&mut self, output_jack_id: usize, buf: &[u8]) -> Result<(), Error>;
+    /// Get memory space for all output data, to be sent on next poll
+    fn enqueue_packets(&mut self, size: usize) -> [&mut [u8]; O];
     /// Get multicast address for a particular jack
     fn jack_addr(&mut self, output_jack_id: usize) -> Result<[u8; 4], Error>;
     /// Disconnect an input jack
@@ -364,15 +366,20 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
     {
         let mut input_colors: [Srgb<u8>; I] = [Default::default(); I];
         let mut output_colors: [Srgb<u8>; O] = [Default::default(); O];
-        let mut block = ProcessBlock::<I, O>::new([Default::default(); I], [Default::default(); O]);
         self.interface.poll(time)?;
         if self.can_send() {
-            let (mut resp, mut gsu) = (None, None);
-            if let Ok(d) = self.recv_directive() {
-                (resp, gsu) = self.ping_patch.poll(Some(d), time);
+            let output_packets = self.interface.enqueue_packets(768).map(|b| {
+                unsafe {
+                    &mut *(b as *mut [u8] as *mut AudioPacket)
+                }
+            });
+            let mut block = ProcessBlock::<I, O>::new([Default::default(); I], output_packets);
+            // let (mut resp, mut gsu) = (None, None);
+            let (resp, gsu) = if let Ok(d) = self.recv_directive() {
+                self.ping_patch.poll(Some(d), time)
             } else {
-                (resp, gsu) = self.ping_patch.poll(None, time);
-            }
+                self.ping_patch.poll(None, time)
+            };
             if let Some(resp) = resp {
                 self.send_directive(&resp)?;
             }
@@ -396,10 +403,10 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
             }
             f(&mut block);
             for i in 0..O {
-                let buf = block.output[i];
-                if self.jack_send(i, &buf).is_err() {
-                    loop {}
-                };
+                // let buf = block.output[i];
+                // if self.jack_send(i, &buf).is_err() {
+                //     loop {}
+                // };
                 let avg = block.output[i].max();
                 let c: Srgb =
                     Hsv::new(self.color as f32, 1.0, avg * 16.0 / i16::MAX as f32).into_color();
@@ -563,13 +570,13 @@ impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, 
     }
 }
 
-pub struct ProcessBlock<const I: usize, const O: usize> {
+pub struct ProcessBlock<'a, const I: usize, const O: usize> {
     input: [AudioPacket; I],
-    output: [AudioPacket; O],
+    output: [&'a mut AudioPacket; O],
 }
 
-impl<const I: usize, const O: usize> ProcessBlock<I, O> {
-    pub fn new(input: [AudioPacket; I], output: [AudioPacket; O]) -> Self {
+impl<'a, const I: usize, const O: usize> ProcessBlock<'a, I, O> {
+    pub fn new(input: [AudioPacket; I], output: [&'a mut AudioPacket; O]) -> Self {
         ProcessBlock { input, output }
     }
 
@@ -578,7 +585,7 @@ impl<const I: usize, const O: usize> ProcessBlock<I, O> {
     }
 
     pub fn set_output(&mut self, handle: OutputJackHandle, data: AudioPacket) {
-        self.output[handle.0] = data;
+        *self.output[handle.0] = data;
     }
 
     pub fn get_mut_output(&mut self, handle: OutputJackHandle) -> &mut AudioPacket {

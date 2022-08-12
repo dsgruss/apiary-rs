@@ -246,17 +246,6 @@ where
             }
         }
     }
-
-    // pub fn enqueue_packet(&mut self, size: usize) -> impl Iterator<Item = &mut [u8]> {
-    //     self.iface.sockets_mut().filter_map(|(h, s)| match s {
-    //         Socket::Udp(s) => s.send(size, self.output_jack_endpoints[0]).ok(),
-    //         _ => None,
-    // })
-    //     // let res = for (i, out) in self.output_jack_handles.iter().enumerate() {
-    //     //     let socket = self.iface.get_socket::<UdpSocket>(*out);
-    //     //     socket.send(size, self.output_jack_endpoints[i]).unwrap()
-    //     // }
-    // }
 }
 
 impl<'a, DeviceT, const I: usize, const O: usize, const N: usize> Network<I, O>
@@ -373,6 +362,28 @@ where
             info!("Socket not ready");
             Err(Error::Network)
         }
+    }
+
+    fn enqueue_packets(&mut self, size: usize) -> [&mut [u8]; O] {
+        let mut res: [Option<&mut [u8]>; O] = [(); O].map(|_| None);
+        for (h, s) in self.iface.sockets_mut() {
+            match s {
+                Socket::Udp(s) => {
+                    for i in 0..O {
+                        if self.output_jack_handles[i] == h {
+                            res[i] = Some(s.send(size, self.output_jack_endpoints[i]).unwrap());
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            };
+        }
+        res.map(|s| s.unwrap())
+        // let res = for (i, out) in self.output_jack_handles.iter().enumerate() {
+        //     let socket = self.iface.get_socket::<UdpSocket>(*out);
+        //     socket.send(size, self.output_jack_endpoints[i]).unwrap()
+        // }
     }
 
     fn jack_addr(&mut self, jack_id: usize) -> Result<[u8; 4], Error> {
