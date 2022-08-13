@@ -1,8 +1,9 @@
 //! This build script creates the wavetable files during compile time, since they end up being a
 //! chunk of static memory embedded in the executable.
 
+use fixed::types::I1F15;
 use rustfft::{num_complex::Complex, FftPlanner};
-use std::f32::consts::PI;
+use std::{f32::consts::PI, mem};
 use std::fs::File;
 use std::io::Write;
 use zerocopy::{AsBytes, FromBytes};
@@ -18,6 +19,24 @@ impl Default for Wavetable {
         Wavetable {
             vals: [[0.0; 2048]; 9],
         }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+struct WavetableFP {
+    vals: [[I1F15; 2048]; 9],
+}
+
+impl WavetableFP {
+    fn new(wt: Wavetable) -> Self {
+        let mut vals: [[I1F15; 2048]; 9] = [[I1F15::from_num(0.0); 2048]; 9];
+        for i in 0..2048 {
+            for j in 0..9 {
+                vals[j][i] = I1F15::from_num(wt.vals[j][i]);
+            }
+        }
+        WavetableFP { vals }
     }
 }
 
@@ -63,15 +82,32 @@ fn generate_wavetable(input: [f32; 2048]) -> Wavetable {
     result
 }
 
+fn write_wavetable(wt: Wavetable, csv: &str, header: &str, fval: &str, fpval: &str) {
+    let mut f = File::create(csv).unwrap();
+    writeln!(f, "{}", header).unwrap();
+    for i in 0..2048 {
+        for j in 0..9 {
+            write!(f, "{}, ", wt.vals[j][i]).unwrap();
+        }
+        write!(f, "\n").unwrap();
+    }
+    File::create(fval)
+        .unwrap()
+        .write_all(wt.as_bytes())
+        .unwrap();
+    let wtfp = &WavetableFP::new(wt);
+    let mut f_fp = File::create(fpval).unwrap();
+    unsafe {
+        f_fp.write_all(& *(wtfp as *const WavetableFP as *const [u8; mem::size_of::<WavetableFP>()])).unwrap();
+    }
+}
+
 fn main() {
     let mut sin = [0.0; 2048];
     for i in 0..2048 {
         sin[i] = (i as f32 * 2.0 * PI / 2048.0).sin();
     }
-    File::create("wt/sin.in")
-        .unwrap()
-        .write_all(generate_wavetable(sin).as_bytes())
-        .unwrap();
+    write_wavetable(generate_wavetable(sin), "wt/sin.csv", "# Sine function wavetable", "wt/sin.f32", "wt/sin.i1f15");
 
     let mut tri = [0.0; 2048];
     for i in 0..2048 {
@@ -82,26 +118,17 @@ fn main() {
             1.0 - 4.0 * (phase - 0.5)
         };
     }
-    File::create("wt/tri.in")
-        .unwrap()
-        .write_all(generate_wavetable(tri).as_bytes())
-        .unwrap();
+    write_wavetable(generate_wavetable(tri), "wt/tri.csv", "# Triangle function wavetable", "wt/tri.f32", "wt/tri.i1f15");
 
     let mut saw = [0.0; 2048];
     for i in 0..2048 {
         saw[i] = -1.0 + 2.0 * (i as f32) / 2048.0;
     }
-    File::create("wt/saw.in")
-        .unwrap()
-        .write_all(generate_wavetable(saw).as_bytes())
-        .unwrap();
+    write_wavetable(generate_wavetable(saw), "wt/saw.csv", "# Sawtooth function wavetable", "wt/saw.f32", "wt/saw.i1f15");
 
     let mut sqr = [0.0; 2048];
     for i in 0..2048 {
         sqr[i] = if i < 1024 { -1.0 } else { 1.0 };
     }
-    File::create("wt/sqr.in")
-        .unwrap()
-        .write_all(generate_wavetable(sqr).as_bytes())
-        .unwrap();
+    write_wavetable(generate_wavetable(sqr), "wt/sqr.csv", "# Square wave wavetable", "wt/sqr.f32", "wt/sqr.i1f15");
 }

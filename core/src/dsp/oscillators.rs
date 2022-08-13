@@ -1,9 +1,10 @@
 use core::{cmp::min, f32::consts::PI, mem};
 
+use fixed::{types::I1F15};
 use libm::{ceilf, floorf, roundf, sinf};
 use zerocopy::{AsBytes, FromBytes};
 
-use crate::{voct_to_frequency, voct_to_frequency_table, SAMPLE_RATE, CHANNELS};
+use crate::{voct_to_frequency, SAMPLE_RATE};
 
 #[derive(Copy, Clone, Default)]
 pub struct NaiveOscillator {
@@ -103,18 +104,33 @@ pub struct WtOscillator {
 // memory, rather than ram as is the case with lazy_static.
 
 static WTSIN: Wavetable =
-    unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/sin.in")) };
+    unsafe { mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!("../../wt/sin.f32")) };
 static WTTRI: Wavetable =
-    unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/tri.in")) };
+    unsafe { mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!("../../wt/tri.f32")) };
 static WTSAW: Wavetable =
-    unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/saw.in")) };
+    unsafe { mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!("../../wt/saw.f32")) };
 static WTSQR: Wavetable =
-    unsafe { mem::transmute::<[u8; 73728], Wavetable>(*include_bytes!("../../wt/sqr.in")) };
+    unsafe { mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!("../../wt/sqr.f32")) };
+
+static WTSINFP: WavetableFP =
+    unsafe { mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!("../../wt/sin.i1f15")) };
+static WTTRIFP: WavetableFP =
+    unsafe { mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!("../../wt/tri.i1f15")) };
+static WTSAWFP: WavetableFP =
+    unsafe { mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!("../../wt/saw.i1f15")) };
+static WTSQRFP: WavetableFP =
+    unsafe { mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!("../../wt/sqr.i1f15")) };
 
 #[derive(AsBytes, FromBytes, Debug)]
 #[repr(C)]
 struct Wavetable {
     vals: [[f32; 2048]; 9],
+}
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+struct WavetableFP {
+    vals: [[I1F15; 2048]; 9],
 }
 
 impl Default for WtOscillator {
@@ -174,7 +190,6 @@ impl WtOscillator {
     }
 
     pub fn process_approx(&mut self, amp: f32, freq: f32) -> (i16, i16, i16, i16) {
-
         let idx = match freq as u16 {
             f if f < 40 => 0,
             f if f < 80 => 0,
@@ -191,8 +206,7 @@ impl WtOscillator {
         let cen = self.phase as usize;
         // let sin = amp * ((WTSIN).vals[idx][cen]);
         let sin = 0;
-        // let tri = amp * ((WTTRI).vals[idx][cen]);
-        let tri = 0;
+        let tri = amp * ((WTTRI).vals[idx][cen]);
         let saw = amp * ((WTSAW).vals[idx][cen]);
         let sqr = amp * ((WTSQR).vals[idx][cen]);
 
@@ -201,5 +215,33 @@ impl WtOscillator {
             self.phase -= 2048.0;
         }
         (sin as i16, tri as i16, saw as i16, sqr as i16)
+    }
+
+    pub fn process_approx_fp(&mut self, amp: i16, freq: f32) -> (i16, i16, i16, i16) {
+        let idx = match freq as u16 {
+            f if f < 40 => 0,
+            f if f < 80 => 0,
+            f if f < 160 => 1,
+            f if f < 320 => 2,
+            f if f < 640 => 3,
+            f if f < 1280 => 4,
+            f if f < 2560 => 5,
+            f if f < 5120 => 6,
+            f if f < 10240 => 7,
+            _ => 8,
+        };
+
+        let a = I1F15::from_bits(amp);
+        let cen = self.phase as usize;
+        // let sin = a * ((WTSINFP).vals[idx][cen]);
+        let tri = a * ((WTTRIFP).vals[idx][cen]);
+        let saw = a * ((WTSAWFP).vals[idx][cen]);
+        let sqr = a * ((WTSQRFP).vals[idx][cen]);
+
+        self.phase += freq / SAMPLE_RATE * 2048.0;
+        while self.phase >= 2048.0 {
+            self.phase -= 2048.0;
+        }
+        (0 /*sin.to_bits()*/, tri.to_bits(), saw.to_bits(), sqr.to_bits())
     }
 }

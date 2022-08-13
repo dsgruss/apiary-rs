@@ -16,6 +16,7 @@ managed = { version = "0.8.0", default-features = false }
 zerocopy = "0.6.1"
 
 libm = "0.2.2"
+fixed = "1.17"
 itertools = { version = "0.10.3", default-features = false }
 
 palette = { version = "0.6.1", default-features = false, features = ["libm"] }
@@ -56,6 +57,7 @@ cpal = "0.13.5"
 [build-dependencies]
 zerocopy = "0.6.1"
 rustfft = "6.0.1"
+fixed = "1.17"
 
 [[example]]
 name = "manager"

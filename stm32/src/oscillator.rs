@@ -99,10 +99,10 @@ impl Oscillator {
     pub fn process(&mut self, block: &mut ProcessBlock<NUM_INPUTS, NUM_OUTPUTS>) {
         for i in 0..BLOCK_SIZE {
             for j in 0..CHANNELS {
-                let lev = block.get_input(self.jack_level).data[i].data[j] as f32 * 0.5;
+                let lev = block.get_input(self.jack_level).data[i].data[j] >> 1;
                 let freq =
                     voct_to_frequency_table(block.get_input(self.jack_input).data[i].data[j]);
-                let (_, tri, saw, sqr) = self.osc[j].process_approx(lev, freq);
+                let (_, tri, saw, sqr) = self.osc[j].process_approx_fp(lev, freq);
                 block.get_mut_output(self.jack_tri).data[i].data[j] = tri;
                 block.get_mut_output(self.jack_saw).data[i].data[j] = saw;
                 block.get_mut_output(self.jack_sqr).data[i].data[j] = sqr;
