@@ -3,9 +3,9 @@
 
 use fixed::types::I1F15;
 use rustfft::{num_complex::Complex, FftPlanner};
-use std::{f32::consts::PI, mem};
 use std::fs::File;
 use std::io::Write;
+use std::{f32::consts::PI, mem};
 use zerocopy::{AsBytes, FromBytes};
 
 #[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
@@ -98,7 +98,10 @@ fn write_wavetable(wt: Wavetable, csv: &str, header: &str, fval: &str, fpval: &s
     let wtfp = &WavetableFP::new(wt);
     let mut f_fp = File::create(fpval).unwrap();
     unsafe {
-        f_fp.write_all(& *(wtfp as *const WavetableFP as *const [u8; mem::size_of::<WavetableFP>()])).unwrap();
+        f_fp.write_all(
+            &*(wtfp as *const WavetableFP as *const [u8; mem::size_of::<WavetableFP>()]),
+        )
+        .unwrap();
     }
 }
 
@@ -107,7 +110,13 @@ fn main() {
     for i in 0..2048 {
         sin[i] = (i as f32 * 2.0 * PI / 2048.0).sin();
     }
-    write_wavetable(generate_wavetable(sin), "wt/sin.csv", "# Sine function wavetable", "wt/sin.f32", "wt/sin.i1f15");
+    write_wavetable(
+        generate_wavetable(sin),
+        "wt/sin.csv",
+        "# Sine function wavetable",
+        "wt/sin.f32",
+        "wt/sin.i1f15",
+    );
 
     let mut tri = [0.0; 2048];
     for i in 0..2048 {
@@ -118,17 +127,35 @@ fn main() {
             1.0 - 4.0 * (phase - 0.5)
         };
     }
-    write_wavetable(generate_wavetable(tri), "wt/tri.csv", "# Triangle function wavetable", "wt/tri.f32", "wt/tri.i1f15");
+    write_wavetable(
+        generate_wavetable(tri),
+        "wt/tri.csv",
+        "# Triangle function wavetable",
+        "wt/tri.f32",
+        "wt/tri.i1f15",
+    );
 
     let mut saw = [0.0; 2048];
     for i in 0..2048 {
         saw[i] = -1.0 + 2.0 * (i as f32) / 2048.0;
     }
-    write_wavetable(generate_wavetable(saw), "wt/saw.csv", "# Sawtooth function wavetable", "wt/saw.f32", "wt/saw.i1f15");
+    write_wavetable(
+        generate_wavetable(saw),
+        "wt/saw.csv",
+        "# Sawtooth function wavetable",
+        "wt/saw.f32",
+        "wt/saw.i1f15",
+    );
 
     let mut sqr = [0.0; 2048];
     for i in 0..2048 {
         sqr[i] = if i < 1024 { -1.0 } else { 1.0 };
     }
-    write_wavetable(generate_wavetable(sqr), "wt/sqr.csv", "# Square wave wavetable", "wt/sqr.f32", "wt/sqr.i1f15");
+    write_wavetable(
+        generate_wavetable(sqr),
+        "wt/sqr.csv",
+        "# Square wave wavetable",
+        "wt/sqr.f32",
+        "wt/sqr.i1f15",
+    );
 }
