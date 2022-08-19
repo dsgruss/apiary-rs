@@ -17,7 +17,7 @@ compile_error!("You must enable exactly one network feature");
 #[macro_use]
 extern crate log;
 
-mod leader_election;
+// mod leader_election;
 mod ping_patch;
 
 #[cfg(feature = "network-native")]
@@ -37,7 +37,7 @@ pub mod dsp;
 use core::{marker::PhantomData, mem};
 
 use heapless::String;
-use leader_election::LeaderElection;
+// use leader_election::LeaderElection;
 use palette::{Hsv, IntoColor, Srgb};
 use ping_patch::PingPatch;
 use rand_core::RngCore;
@@ -317,7 +317,7 @@ pub struct Module<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> 
 }
 
 impl<T: Network<I, O>, R: RngCore, const I: usize, const O: usize> Module<T, R, I, O> {
-    pub fn new(interface: T, rand_source: R, id: Uuid, color: u16, time: i64) -> Self {
+    pub fn new(interface: T, _rand_source: R, id: Uuid, color: u16, time: i64) -> Self {
         // let leader_election = LeaderElection::new(id.clone(), time, rand_source);
         let ping_patch = PingPatch::new(id.clone(), time);
         Module {
