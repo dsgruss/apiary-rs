@@ -33,6 +33,7 @@ features = ["network-smoltcp"]
 [dependencies.stm32-eth]
 # git = "https://github.com/stm32-rs/stm32-eth"
 path = "../../stm32-eth"
+optional = true
 features = ["smoltcp-phy"]
 # rev = "df8b0f9"
 
