@@ -1,6 +1,6 @@
 use core::{cmp::min, f32::consts::PI, mem};
 
-use fixed::{types::I1F15};
+use fixed::types::I1F15;
 use libm::{ceilf, floorf, roundf, sinf};
 use zerocopy::{AsBytes, FromBytes};
 
@@ -103,23 +103,47 @@ pub struct WtOscillator {
 // Safety: I'm not sure how to do this so that the precalculated arrays are loaded into static flash
 // memory, rather than ram as is the case with lazy_static.
 
-static WTSIN: Wavetable =
-    unsafe { mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!("../../wt/sin.f32")) };
-static WTTRI: Wavetable =
-    unsafe { mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!("../../wt/tri.f32")) };
-static WTSAW: Wavetable =
-    unsafe { mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!("../../wt/saw.f32")) };
-static WTSQR: Wavetable =
-    unsafe { mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!("../../wt/sqr.f32")) };
+static WTSIN: Wavetable = unsafe {
+    mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!(
+        "../../wt/sin.f32"
+    ))
+};
+static WTTRI: Wavetable = unsafe {
+    mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!(
+        "../../wt/tri.f32"
+    ))
+};
+static WTSAW: Wavetable = unsafe {
+    mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!(
+        "../../wt/saw.f32"
+    ))
+};
+static WTSQR: Wavetable = unsafe {
+    mem::transmute::<[u8; mem::size_of::<Wavetable>()], Wavetable>(*include_bytes!(
+        "../../wt/sqr.f32"
+    ))
+};
 
-static WTSINFP: WavetableFP =
-    unsafe { mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!("../../wt/sin.i1f15")) };
-static WTTRIFP: WavetableFP =
-    unsafe { mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!("../../wt/tri.i1f15")) };
-static WTSAWFP: WavetableFP =
-    unsafe { mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!("../../wt/saw.i1f15")) };
-static WTSQRFP: WavetableFP =
-    unsafe { mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!("../../wt/sqr.i1f15")) };
+static WTSINFP: WavetableFP = unsafe {
+    mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!(
+        "../../wt/sin.i1f15"
+    ))
+};
+static WTTRIFP: WavetableFP = unsafe {
+    mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!(
+        "../../wt/tri.i1f15"
+    ))
+};
+static WTSAWFP: WavetableFP = unsafe {
+    mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!(
+        "../../wt/saw.i1f15"
+    ))
+};
+static WTSQRFP: WavetableFP = unsafe {
+    mem::transmute::<[u8; mem::size_of::<WavetableFP>()], WavetableFP>(*include_bytes!(
+        "../../wt/sqr.i1f15"
+    ))
+};
 
 #[derive(AsBytes, FromBytes, Debug)]
 #[repr(C)]
@@ -242,6 +266,11 @@ impl WtOscillator {
         while self.phase >= 2048.0 {
             self.phase -= 2048.0;
         }
-        (0 /*sin.to_bits()*/, tri.to_bits(), saw.to_bits(), sqr.to_bits())
+        (
+            0, /*sin.to_bits()*/
+            tri.to_bits(),
+            saw.to_bits(),
+            sqr.to_bits(),
+        )
     }
 }

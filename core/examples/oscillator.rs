@@ -1,4 +1,6 @@
-use apiary_core::{dsp::oscillators::WtOscillator, AudioPacket, BLOCK_SIZE, CHANNELS, voct_to_frequency_table};
+use apiary_core::{
+    dsp::oscillators::WtOscillator, voct_to_frequency_table, AudioPacket, BLOCK_SIZE, CHANNELS,
+};
 
 use crate::display_module::{DisplayModule, Processor};
 
@@ -56,7 +58,10 @@ impl Processor<NUM_INPUTS, NUM_OUTPUTS, NUM_PARAMS> for Oscillator {
                 //     params[RANGE_PARAM],
                 //     self.level,
                 // );
-                let (sin, tri, saw, sqr) = self.osc[j].process_approx_fp(input[LEVEL_INPUT].data[i].data[j], voct_to_frequency_table(input[IN_INPUT].data[i].data[j]));
+                let (sin, tri, saw, sqr) = self.osc[j].process_approx_fp(
+                    input[LEVEL_INPUT].data[i].data[j],
+                    voct_to_frequency_table(input[IN_INPUT].data[i].data[j]),
+                );
                 output[SIN_OUTPUT].data[i].data[j] = sin;
                 output[TRI_OUTPUT].data[i].data[j] = tri;
                 output[SAW_OUTPUT].data[i].data[j] = saw;

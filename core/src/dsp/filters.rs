@@ -1,5 +1,6 @@
 use core::f32::consts::PI;
 
+use fixed::types::{I17F15, I1F15, I4F12, I4F28, I5F27, U4F12};
 use libm::{roundf, sinf, tanf};
 
 use crate::{softclip, SAMPLE_RATE};
@@ -77,59 +78,69 @@ impl LadderFilter {
 }
 
 pub struct LadderFilterFP {
-    omega0dt: i16,
-    state: [i16; 4],
-    resonance: f32,
-    input: i16,
+    omega0dt: I1F15,
+    state: [I1F15; 4],
+    resonance: I17F15,
+    input: I1F15,
 }
 
 impl Default for LadderFilterFP {
     fn default() -> Self {
         LadderFilterFP {
-            omega0dt: roundf(2.0 * PI * 1000.0 / SAMPLE_RATE * i16::MAX as f32) as i16,
-            state: [0; 4],
-            resonance: 0.0,
-            input: 0,
+            omega0dt: I1F15::from_num(0.15_f32),
+            state: [I1F15::from_num(0_i16); 4],
+            resonance: I17F15::from_num(0_i16),
+            input: I1F15::from_num(0_i16),
         }
     }
 }
 
-fn fpmul(x: i16, y: i16) -> i16 {
-    ((x as i32 * y as i32) >> 16) as i16
+pub fn softclipfp(x: I17F15) -> I1F15 {
+    let three = I17F15::from_num(3_i16);
+    let nine = three * three;
+    let twenty_seven = nine * three;
+    let y = if x < -three {
+        -three
+    } else if x > three {
+        three
+    } else {
+        x
+    };
+    I1F15::from_num(y * (twenty_seven + y * y) / (twenty_seven + nine * y * y))
 }
 
 impl LadderFilterFP {
     pub fn set_params(&mut self, cutoff: f32, resonance: f32) {
-        self.omega0dt =
-            roundf(2.0 * PI * cutoff.clamp(0.0, 8000.0) / SAMPLE_RATE * i16::MAX as f32) as i16;
-        self.resonance = resonance;
+        self.omega0dt = I1F15::from_num((2.0 * PI * cutoff / SAMPLE_RATE).clamp(0.0, 0.99));
+        self.resonance = I17F15::from_num(resonance);
     }
 
-    pub fn process(&mut self, input: i16, _dt: i16) -> i16 {
+    pub fn process(&mut self, input: i16) -> i16 {
         let mut state = self.state.clone();
-        self.rk4(&mut state, self.input, input);
+        self.rk4(&mut state, self.input, I1F15::from_bits(input));
         self.state = state;
-        self.input = input;
-        self.state[3]
+        self.input = I1F15::from_bits(input);
+        self.state[3].to_bits()
     }
 
-    fn f(&self, x: [i16; 4], inputt: i16) -> [i16; 4] {
-        let mut dxdt = [0; 4];
+    fn f(&self, x: [I1F15; 4], inputt: I1F15) -> [I1F15; 4] {
+        // let mut dxdt = [0; 4];
         // let inputt = input * (t / dt) + input_new * (1.0 - t / dt);
-        // let inputc = (fastclamp(inputt as f32 - self.resonance * x[3] as f32) * i16::MAX as f32) as i16;
+        let inputc = softclipfp(I17F15::from(inputt) - self.resonance * I17F15::from(x[3]));
         // let yc = x.map(softclip);
-        let inputc = inputt;
+        // let inputc = inputt;
         let yc = x;
 
-        dxdt[0] = fpmul(self.omega0dt, inputc - yc[0]);
-        dxdt[1] = fpmul(self.omega0dt, yc[0] - yc[1]);
-        dxdt[2] = fpmul(self.omega0dt, yc[1] - yc[2]);
-        dxdt[3] = fpmul(self.omega0dt, yc[2] - yc[3]);
-        dxdt
+        [
+            self.omega0dt * softclipfp(I17F15::from(inputc) - I17F15::from(yc[0])),
+            self.omega0dt * softclipfp(I17F15::from(yc[0]) - I17F15::from(yc[1])),
+            self.omega0dt * softclipfp(I17F15::from(yc[1]) - I17F15::from(yc[2])),
+            self.omega0dt * softclipfp(I17F15::from(yc[2]) - I17F15::from(yc[3])),
+        ]
     }
 
-    fn rk4(&mut self, x: &mut [i16; 4], input: i16, input_new: i16) {
-        let mut yi = [0; 4];
+    fn rk4(&mut self, x: &mut [I1F15; 4], input: I1F15, input_new: I1F15) {
+        let mut yi = [I1F15::from_num(0); 4];
 
         let k1 = self.f(*x, input_new);
         for i in 0..4 {

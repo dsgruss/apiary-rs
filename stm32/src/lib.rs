@@ -1,8 +1,6 @@
 #![no_std]
 
 use panic_semihosting as _;
-// use panic_itm as _;
-// use panic_halt as _;
 
 use stm32f4xx_hal::{
     adc::{
@@ -29,12 +27,12 @@ extern crate log;
 
 use apiary_core::{socket_smoltcp::SmoltcpInterface, Module, Uuid};
 
-// mod filter;
-// use filter as engine;
-// use filter::{Filter, FilterPins};
-mod oscillator;
-use oscillator as engine;
-use oscillator::{Oscillator, OscillatorPins};
+mod filter;
+use filter as engine;
+use filter::{Filter, FilterPins};
+// mod oscillator;
+// use oscillator as engine;
+// use oscillator::{Oscillator, OscillatorPins};
 // mod envelope;
 // use envelope as engine;
 // use envelope::{Envelope, EnvelopePins};
@@ -131,21 +129,21 @@ pub fn start() -> ! {
         0,
     );
 
-    // let filter_pins = FilterPins {
-    //     input: gpioc.pc8,
-    //     key_track: gpioc.pc9,
-    //     contour: gpiod.pd12,
-    //     output: gpiod.pd13,
-    // };
-    // let mut en = Filter::new(filter_pins, &mut module);
-    let oscillator_pins = OscillatorPins {
-        input: gpioc.pc7,
-        level: gpioc.pc8,
-        tri: gpioc.pc9,
-        saw: gpiod.pd12,
-        sqr: gpiod.pd13,
+    let filter_pins = FilterPins {
+        input: gpioc.pc8,
+        key_track: gpioc.pc9,
+        contour: gpiod.pd12,
+        output: gpiod.pd13,
     };
-    let mut en = Oscillator::new(oscillator_pins, &mut module);
+    let mut en = Filter::new(filter_pins, &mut module);
+    // let oscillator_pins = OscillatorPins {
+    //     input: gpioc.pc7,
+    //     level: gpioc.pc8,
+    //     tri: gpioc.pc9,
+    //     saw: gpiod.pd12,
+    //     sqr: gpiod.pd13,
+    // };
+    // let mut en = Oscillator::new(oscillator_pins, &mut module);
     // let envelope_pins = EnvelopePins {
     //     gate: gpiod.pd12,
     //     level: gpiod.pd13,
